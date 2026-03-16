@@ -418,8 +418,9 @@ function showLoginError(msg) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Auth: en móvil/iOS usa SIEMPRE redirect (Safari bloquea popups).
-// En escritorio usa popup para mejor experiencia.
+// Auth: usa popup en todos los dispositivos.
+// En Safari iOS asegurarse de tener popups habilitados en
+// Configuración → Safari → Bloquear ventanas emergentes → OFF
 // ─────────────────────────────────────────────────────────────
 function isMobile() {
   return /iPhone|iPad|iPod|Android|Mobile/i.test(navigator.userAgent);
@@ -435,48 +436,41 @@ function loginGoogle() {
 
   setSS('load', '⏳ Conectando...');
 
-  // En iPhone/iPad/Android siempre usar redirect
-  if (isMobile()) {
-    console.log('Dispositivo móvil detectado, usando redirect...');
-    auth.signInWithRedirect(provider).catch(e => {
-      console.error('Error redirect:', e);
-      showLoginError('❌ ' + (e.message || 'Error al iniciar sesión'));
+  auth.signInWithPopup(provider)
+    .then(result => {
+      console.log('Login exitoso:', result.user.email);
+    })
+    .catch(e => {
+      console.error('Error popup:', e.code, e.message);
+
+      // Safari iOS a veces reporta este error aunque el popup esté permitido
+      // En ese caso caer a redirect como último recurso
+      if (
+        e.code === 'auth/popup-blocked' ||
+        e.code === 'auth/popup-closed-by-user' ||
+        e.code === 'auth/cancelled-popup-request'
+      ) {
+        showLoginError('⚠️ Popup bloqueado. En iPhone: Configuración → Safari → desactivá "Bloquear ventanas emergentes", luego intentá de nuevo.');
+        setSS('error', '❌ Popup bloqueado');
+        return;
+      }
+
+      let msg = '❌ Error al iniciar sesión';
+      if (e.code === 'auth/unauthorized-domain') {
+        msg = '❌ Dominio no autorizado: ' + window.location.hostname;
+      } else if (e.code === 'auth/configuration-not-found') {
+        msg = '❌ Google Sign-in no habilitado en Firebase Console';
+      } else if (e.code === 'auth/invalid-api-key') {
+        msg = '❌ API Key inválida';
+      } else if (e.code === 'auth/network-request-failed') {
+        msg = '❌ Sin conexión a internet';
+      } else if (e.message) {
+        msg = '❌ ' + e.message;
+      }
+
+      showLoginError(msg);
       setSS('error', '❌ Error');
     });
-    return;
-  }
-
-  // En escritorio usar popup (más fluido)
-  auth.signInWithPopup(provider).catch(e => {
-    console.warn('Popup falló, intentando redirect:', e.code);
-
-    if (
-      e.code === 'auth/popup-blocked' ||
-      e.code === 'auth/popup-closed-by-user' ||
-      e.code === 'auth/cancelled-popup-request'
-    ) {
-      auth.signInWithRedirect(provider).catch(err => {
-        console.error('Error redirect:', err);
-        showLoginError('❌ ' + (err.message || 'Error al iniciar sesión'));
-        setSS('error', '❌ Error');
-      });
-      return;
-    }
-
-    let msg = '❌ Error al iniciar sesión';
-    if (e.code === 'auth/unauthorized-domain') {
-      msg = '❌ Dominio no autorizado. Agregá ' + window.location.hostname + ' en Firebase Console → Authentication → Authorized domains';
-    } else if (e.code === 'auth/configuration-not-found') {
-      msg = '❌ Google Sign-in no está habilitado en Firebase Console';
-    } else if (e.code === 'auth/invalid-api-key') {
-      msg = '❌ API Key inválida';
-    } else if (e.message) {
-      msg = '❌ ' + e.message;
-    }
-
-    showLoginError(msg);
-    setSS('error', '❌ Error');
-  });
 }
 
 // Manejar resultado del redirect al volver de Google
