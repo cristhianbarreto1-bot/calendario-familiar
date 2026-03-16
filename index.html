@@ -438,8 +438,14 @@ function renderCalendar(){
     const isToday=date.toDateString()===today.toDateString();
     const isSel=selectedDate===ds;
 
-    // Eventos del día (por día de semana, respetando filtro)
-    let evs=activities.filter(a=>parseInt(a.day)===dow);
+    // Eventos del día: filtra por fecha exacta
+    let evs=activities.filter(a=>{
+      if(parseInt(a.day)!==dow) return false;
+      // Si el evento tiene fecha guardada, que coincida exactamente con este día del calendario
+      if(a.fecha) return a.fecha===ds;
+      // Si no tiene fecha (eventos viejos sin fecha), mostrar en todos los días del mismo día de semana
+      return true;
+    });
     if(filterMember!=='all') evs=evs.filter(a=>a.member===filterMember);
     const count=evs.length;
 
@@ -494,7 +500,11 @@ function openDayPanel(ds){
   const label=d.toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
   document.getElementById('day-panel-title').textContent=label.charAt(0).toUpperCase()+label.slice(1);
 
-  let evs=activities.filter(a=>parseInt(a.day)===dow);
+  let evs=activities.filter(a=>{
+    if(parseInt(a.day)!==dow) return false;
+    if(a.fecha) return a.fecha===ds;
+    return true;
+  });
   if(filterMember!=='all') evs=evs.filter(a=>a.member===filterMember);
   evs.sort((a,b)=>(a.time||'').localeCompare(b.time||''));
 
