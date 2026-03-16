@@ -336,10 +336,20 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 
 <script>
-// Configuración Firebase
+// ─────────────────────────────────────────────────────────────
+// CORRECCIÓN APLICADA:
+//   authDomain cambiado de "calendariofamiliar-edeb3.firebaseapp.com"
+//   a "cristhianbarreto1-bot.github.io" para que el redirect de
+//   Google vuelva correctamente al dominio de GitHub Pages.
+//
+// TAMBIÉN NECESITÁS hacer esto en Google Cloud Console:
+//   APIs & Services → Credentials → tu OAuth 2.0 Client ID →
+//   Authorized redirect URIs → agregar:
+//   https://cristhianbarreto1-bot.github.io/__/auth/handler
+// ─────────────────────────────────────────────────────────────
 const firebaseConfig = {
   apiKey: "AIzaSyDQH7D54SyerTRa8Y8BXFDFB5cAJkA8p2Q",
-  authDomain: "calendariofamiliar-edeb3.firebaseapp.com",
+  authDomain: "cristhianbarreto1-bot.github.io",   // ← CORREGIDO
   projectId: "calendariofamiliar-edeb3",
   storageBucket: "calendariofamiliar-edeb3.firebasestorage.app",
   messagingSenderId: "251743449792",
@@ -396,42 +406,54 @@ function m2t(m) { return `${String(Math.floor(m / 60)).padStart(2, '0')}:${Strin
 
 function showLoginError(msg) {
   const err = document.getElementById('login-error');
-  if (err) {
-    err.textContent = msg;
-    err.classList.add('show');
-  }
+  if (err) { err.textContent = msg; err.classList.add('show'); }
   toast(msg);
 }
 
-// Auth - SOLO USAR REDIRECT (más confiable en GitHub Pages)
+// ─────────────────────────────────────────────────────────────
+// Auth: intenta popup primero; si falla usa redirect como fallback.
+// Esto funciona mejor en navegadores web (escritorio y móvil).
+// ─────────────────────────────────────────────────────────────
 function loginGoogle() {
-  if (!auth) {
-    showLoginError('❌ Firebase no está listo');
-    return;
-  }
-  
+  if (!auth) { showLoginError('❌ Firebase no está listo'); return; }
+
   const provider = new firebase.auth.GoogleAuthProvider();
   provider.addScope('https://www.googleapis.com/auth/userinfo.email');
   provider.addScope('https://www.googleapis.com/auth/userinfo.profile');
   provider.setCustomParameters({ prompt: 'select_account' });
-  
+
   setSS('load', '⏳ Conectando...');
-  
-  // SIEMPRE usar redirect (más confiable que popup en GitHub Pages)
-  auth.signInWithRedirect(provider).catch(e => {
-    console.error('Error redirect:', e);
+
+  // Intentar popup primero (más fluido en navegadores)
+  auth.signInWithPopup(provider).catch(e => {
+    console.warn('Popup falló, intentando redirect:', e.code);
+
+    // Si el popup fue bloqueado o cerrado, usar redirect
+    if (
+      e.code === 'auth/popup-blocked' ||
+      e.code === 'auth/popup-closed-by-user' ||
+      e.code === 'auth/cancelled-popup-request'
+    ) {
+      auth.signInWithRedirect(provider).catch(err => {
+        console.error('Error redirect:', err);
+        showLoginError('❌ ' + (err.message || 'Error al iniciar sesión'));
+        setSS('error', '❌ Error');
+      });
+      return;
+    }
+
+    // Otros errores: mostrar mensaje descriptivo
     let msg = '❌ Error al iniciar sesión';
-    
     if (e.code === 'auth/unauthorized-domain') {
-      msg = '❌ Dominio no autorizado. Agrega ' + window.location.hostname + ' en Firebase Console > Authentication > Settings > Authorized domains';
+      msg = '❌ Dominio no autorizado. Agregá ' + window.location.hostname + ' en Firebase Console → Authentication → Authorized domains';
     } else if (e.code === 'auth/configuration-not-found') {
-      msg = '❌ Google Sign-in no habilitado en Firebase Console';
+      msg = '❌ Google Sign-in no está habilitado en Firebase Console';
     } else if (e.code === 'auth/invalid-api-key') {
       msg = '❌ API Key inválida';
     } else if (e.message) {
       msg = '❌ ' + e.message;
     }
-    
+
     showLoginError(msg);
     setSS('error', '❌ Error');
   });
@@ -440,23 +462,19 @@ function loginGoogle() {
 // Manejar resultado del redirect al volver de Google
 if (auth) {
   auth.getRedirectResult().then(result => {
-    if (result.user) {
+    if (result && result.user) {
       console.log('Login por redirect exitoso:', result.user.email);
-    } else {
-      console.log('No hay resultado de redirect (usuario no inició sesión aún)');
     }
   }).catch(error => {
     console.error('Error en redirect result:', error);
     let msg = '❌ Error al volver de Google';
-    
     if (error.code === 'auth/unauthorized-domain') {
-      msg = '❌ Dominio no autorizado. Agrega ' + window.location.hostname + ' en Firebase Console';
+      msg = '❌ Dominio no autorizado. Agregá ' + window.location.hostname + ' en Firebase Console';
     } else if (error.code === 'auth/credential-already-in-use') {
       msg = '⚠️ Esta cuenta ya está en uso';
     } else if (error.message) {
       msg = '❌ ' + error.message;
     }
-    
     showLoginError(msg);
   });
 }
@@ -469,20 +487,17 @@ function logout() {
     document.getElementById('app').innerHTML = '';
     document.getElementById('login-screen').classList.add('show');
     toast('👋 Sesión cerrada');
-  }).catch(e => {
-    console.error('Error logout:', e);
-  });
+  }).catch(e => console.error('Error logout:', e));
 }
 
 // Auth state
 if (auth) {
   auth.onAuthStateChanged(user => {
     console.log('Auth state:', user ? 'logueado: ' + user.email : 'no logueado');
-    
-    // Ocultar error de login si existe
+
     const err = document.getElementById('login-error');
     if (err) err.classList.remove('show');
-    
+
     if (!user) {
       hideLoad();
       document.getElementById('login-screen').classList.add('show');
@@ -494,7 +509,6 @@ if (auth) {
     document.getElementById('um-name').textContent = user.displayName || 'Usuario';
     document.getElementById('um-email').textContent = user.email || '';
 
-    // Guardar usuario
     db.ref('usuarios/' + user.uid).set({
       uid: user.uid,
       nombre: user.displayName || '',
@@ -503,13 +517,10 @@ if (auth) {
       ultimaConexion: firebase.database.ServerValue.TIMESTAMP
     });
 
-    // Escuchar eventos
     db.ref('calendario/eventos').on('value', snap => {
       activities = [];
       const d = snap.val();
-      if (d) {
-        Object.entries(d).forEach(([k, v]) => activities.push({ ...v, _key: k }));
-      }
+      if (d) Object.entries(d).forEach(([k, v]) => activities.push({ ...v, _key: k }));
       hideLoad();
       setSS('ok', '✅ Sincronizado');
       render();
@@ -520,7 +531,6 @@ if (auth) {
       hideLoad();
     });
 
-    // Notificaciones
     if ('Notification' in window && Notification.permission === 'default') {
       document.getElementById('notif-banner').classList.add('show');
     }
@@ -529,11 +539,7 @@ if (auth) {
 
 // Notificaciones
 function requestNotifPermission() {
-  if (!('Notification' in window)) {
-    toast('❌ Notificaciones no soportadas');
-    return;
-  }
-  
+  if (!('Notification' in window)) { toast('❌ Notificaciones no soportadas'); return; }
   Notification.requestPermission().then(p => {
     document.getElementById('notif-banner').classList.remove('show');
     toast(p === 'granted' ? '🔔 Activadas' : '🔕 Desactivadas');
@@ -553,7 +559,6 @@ function scheduleNotif() {
     const now = new Date();
     const todayDow = now.getDay();
     const nowMin = now.getHours() * 60 + now.getMinutes();
-
     activities.forEach(a => {
       if (parseInt(a.day) !== todayDow || !a.time) return;
       const diff = t2m(a.time) - nowMin;
@@ -610,7 +615,7 @@ function render() {
 function renderCalendar() {
   const today = new Date();
   const first = new Date(calYear, calMonth, 1);
-  const last = new Date(calYear, calMonth + 1, 0);
+  const last  = new Date(calYear, calMonth + 1, 0);
   const startDow = (first.getDay() + 6) % 7;
   const total = last.getDate();
 
@@ -631,10 +636,10 @@ function renderCalendar() {
 
   for (let day = 1; day <= total; day++) {
     const date = new Date(calYear, calMonth, day);
-    const ds = `${calYear}-${String(calMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-    const dow = date.getDay();
+    const ds   = `${calYear}-${String(calMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    const dow  = date.getDay();
     const isToday = date.toDateString() === today.toDateString();
-    const isSel = selectedDate === ds;
+    const isSel   = selectedDate === ds;
 
     let evs = activities.filter(a => {
       if (parseInt(a.day) !== dow) return false;
@@ -642,6 +647,7 @@ function renderCalendar() {
       return true;
     });
     if (filterMember !== 'all') evs = evs.filter(a => a.member === filterMember);
+
     const count = evs.length;
     const memberSet = [...new Set(evs.map(a => a.member))];
 
@@ -665,27 +671,21 @@ function renderCalendar() {
   for (let i = endDow + 1; i < 7; i++) html += `<div class="cal-day empty"></div>`;
 
   html += `</div></div>`;
-
   html += `<div class="cal-legend">`;
   Object.entries(names).forEach(([k, n]) => {
     html += `<div class="legend-item"><div class="legend-dot" style="background:${colors[k]}"></div>${n}</div>`;
   });
   html += `</div>`;
-
   return html;
 }
 
 function prevMonth() { calMonth--; if (calMonth < 0) { calMonth = 11; calYear--; } render(); }
 function nextMonth() { calMonth++; if (calMonth > 11) { calMonth = 0; calYear++; } render(); }
 
-function selectDay(ds) {
-  selectedDate = ds;
-  render();
-  openDayPanel(ds);
-}
+function selectDay(ds) { selectedDate = ds; render(); openDayPanel(ds); }
 
 function openDayPanel(ds) {
-  const d = new Date(ds + 'T12:00:00');
+  const d   = new Date(ds + 'T12:00:00');
   const dow = d.getDay();
   const label = d.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
@@ -705,11 +705,10 @@ function openDayPanel(ds) {
     html = `<div class="day-empty"><div class="ei">📭</div><p style="font-weight:700">Sin eventos este día</p></div>`;
   } else {
     evs.forEach(a => {
-      const c = colors[a.member] || '#4f46e5';
+      const c  = colors[a.member] || '#4f46e5';
       const ic = a.member === 'mama' ? '👩' : a.member === 'papa' ? '👨' : a.member === 'hijo1' ? '🧒' : '👶';
       const canDel = currentUser && a.creadoPor === currentUser.uid;
       const tr = a.time ? (a.timeFin ? `${a.time} – ${a.timeFin}` : a.time) : '';
-
       html += `<div class="day-ev" style="border-left-color:${c}">
         <div class="day-ev-time">${tr}</div>
         <div class="day-ev-title">${a.title}</div>
@@ -757,12 +756,9 @@ document.addEventListener('click', e => {
 
 function onMemberChange() {
   const isKid = ['hijo1', 'hijo2'].includes(document.getElementById('m').value);
-  const field = document.getElementById('traslado-field');
+  const field  = document.getElementById('traslado-field');
   if (field) field.style.display = isKid ? 'block' : 'none';
-  if (!isKid) {
-    const select = document.getElementById('traslado');
-    if (select) select.value = 'none';
-  }
+  if (!isKid) { const s = document.getElementById('traslado'); if (s) s.value = 'none'; }
 }
 
 function add() {
@@ -775,51 +771,35 @@ function add() {
 function closeModal() {
   const modal = document.getElementById('modal');
   if (modal) modal.classList.remove('open');
-
-  ['t', 'ti', 'tf', 'l'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.value = '';
-  });
-
-  const rep = document.getElementById('rep');
-  if (rep) rep.value = 'none';
-
-  const traslado = document.getElementById('traslado');
-  if (traslado) traslado.value = 'none';
-
-  const field = document.getElementById('traslado-field');
-  if (field) field.style.display = 'none';
+  ['t', 'ti', 'tf', 'l'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  const rep = document.getElementById('rep'); if (rep) rep.value = 'none';
+  const traslado = document.getElementById('traslado'); if (traslado) traslado.value = 'none';
+  const field = document.getElementById('traslado-field'); if (field) field.style.display = 'none';
 }
 
 function save() {
-  if (!db || !currentUser) {
-    toast('❌ No estás conectado');
-    return;
-  }
+  if (!db || !currentUser) { toast('❌ No estás conectado'); return; }
 
   const title = document.getElementById('t').value.trim();
-  const ti = document.getElementById('ti').value;
-  const tf = document.getElementById('tf').value;
+  const ti    = document.getElementById('ti').value;
+  const tf    = document.getElementById('tf').value;
 
   if (!title || !ti) { toast('⚠️ Ingresá título y hora de inicio'); return; }
   if (tf && tf <= ti) { toast('⚠️ La hora de fin debe ser mayor al inicio'); return; }
 
   const member = document.getElementById('m').value;
-  const day = parseInt(document.getElementById('d').value);
-  const loc = document.getElementById('l').value.trim();
-  const rep = document.getElementById('rep').value;
-  const tras = document.getElementById('traslado').value;
+  const day    = parseInt(document.getElementById('d').value);
+  const loc    = document.getElementById('l').value.trim();
+  const rep    = document.getElementById('rep').value;
+  const tras   = document.getElementById('traslado').value;
 
   function getDatesForDay(targetDow) {
     const dates = [];
     const yearStart = new Date(new Date().getFullYear(), 0, 1);
-    const yearEnd = new Date(new Date().getFullYear(), 11, 31);
+    const yearEnd   = new Date(new Date().getFullYear(), 11, 31);
     const d = new Date(yearStart);
     while (d.getDay() !== targetDow) d.setDate(d.getDate() + 1);
-    while (d <= yearEnd) {
-      dates.push(d.toISOString().split('T')[0]);
-      d.setDate(d.getDate() + 7);
-    }
+    while (d <= yearEnd) { dates.push(d.toISOString().split('T')[0]); d.setDate(d.getDate() + 7); }
     return dates;
   }
 
@@ -833,8 +813,8 @@ function save() {
   }
 
   const isRepeat = rep !== 'none';
-  const repDow = isRepeat ? parseInt(rep) : day;
-  const dates = isRepeat ? getDatesForDay(repDow) : [getNextDate(day)];
+  const repDow   = isRepeat ? parseInt(rep) : day;
+  const dates    = isRepeat ? getDatesForDay(repDow) : [getNextDate(day)];
   const eventDay = isRepeat ? repDow : day;
 
   setSS('load', '⏳ Guardando…');
@@ -851,20 +831,13 @@ function save() {
       creadoPorNombre: currentUser.displayName || '',
       creadoEn: firebase.database.ServerValue.TIMESTAMP,
     };
-    
-    if (gid) {
-      ev.groupId = gid;
-      ev.esRepetido = true;
-      ev.semana = i + 1;
-      ev.totalSemanas = dates.length;
-    }
+    if (gid) { ev.groupId = gid; ev.esRepetido = true; ev.semana = i + 1; ev.totalSemanas = dates.length; }
 
     db.ref('calendario/eventos').push(ev).then(() => {
       savedCount++;
       if (savedCount === dates.length) {
         db.ref('registros/historial').push({
-          uid: currentUser.uid,
-          nombre: currentUser.displayName || '',
+          uid: currentUser.uid, nombre: currentUser.displayName || '',
           accion: 'crear_evento',
           detalle: isRepeat
             ? `Creó "${title}" para ${names[member]} todos los ${DAYS[repDow]} del año (${dates.length} eventos)`
@@ -874,44 +847,31 @@ function save() {
         closeModal();
         toast(isRepeat ? `✅ ${dates.length} eventos creados` : '✅ Guardado');
       }
-    }).catch(e => {
-      console.error('Error guardando:', e);
-      setSS('error', '❌ Error');
-      toast('❌ ' + e.message);
-    });
+    }).catch(e => { console.error('Error guardando:', e); setSS('error', '❌ Error'); toast('❌ ' + e.message); });
   });
 }
 
 function del(key) {
   if (!confirm('¿Eliminar?')) return;
   if (!db) return;
-  
   setSS('load', '⏳ Eliminando…');
   db.ref('calendario/eventos/' + key).remove().then(() => {
     db.ref('registros/historial').push({
-      uid: currentUser.uid,
-      nombre: currentUser.displayName || '',
-      accion: 'eliminar_evento',
-      detalle: `Eliminó ${key}`,
+      uid: currentUser.uid, nombre: currentUser.displayName || '',
+      accion: 'eliminar_evento', detalle: `Eliminó ${key}`,
       fecha: firebase.database.ServerValue.TIMESTAMP
     });
     if (selectedDate) openDayPanel(selectedDate);
     toast('🗑️ Eliminado');
-  }).catch(e => {
-    console.error('Error eliminando:', e);
-    setSS('error', '❌ Error');
-    toast('❌ ' + e.message);
-  });
+  }).catch(e => { console.error('Error eliminando:', e); setSS('error', '❌ Error'); toast('❌ ' + e.message); });
 }
 
 function showFreeTime(member) {
   const ic = member === 'mama' ? '👩' : member === 'papa' ? '👨' : member === 'hijo1' ? '🧒' : '👶';
   const tn = new Date();
   const mo = (tn.getDay() === 0 ? -6 : 1 - tn.getDay());
-  const lun = new Date(tn);
-  lun.setDate(tn.getDate() + mo);
-  const vie = new Date(lun);
-  vie.setDate(lun.getDate() + 4);
+  const lun = new Date(tn); lun.setDate(tn.getDate() + mo);
+  const vie = new Date(lun); vie.setDate(lun.getDate() + 4);
   const fmt = d => d.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
 
   const titleEl = document.getElementById('free-title');
@@ -920,7 +880,6 @@ function showFreeTime(member) {
   }
 
   let totalMin = 0, html = '';
-
   const todayRef = new Date();
   const todayDow = todayRef.getDay();
   const mondayOffset = (todayDow === 0 ? -6 : 1 - todayDow);
@@ -939,19 +898,16 @@ function showFreeTime(member) {
     activities.forEach(a => {
       if (parseInt(a.day) !== dow || !a.time) return;
       if (a.fecha && a.fecha !== thisDateStr) return;
-
       const s = t2m(a.time);
       const e = a.timeFin ? t2m(a.timeFin) : s + 60;
-      const own = a.member === member;
-      const kid = ['hijo1', 'hijo2'].includes(a.member);
+      const own  = a.member === member;
+      const kid  = ['hijo1', 'hijo2'].includes(a.member);
       const tras = kid && (a.traslado === member || a.traslado === 'ambos');
-
       if (own || tras) {
         busy.push({
           start: Math.max(WORK_START, tras ? s - BUFFER : s),
-          end: Math.min(WORK_END, tras ? e + BUFFER : e),
-          label: a.title,
-          isKid: tras
+          end:   Math.min(WORK_END,   tras ? e + BUFFER : e),
+          label: a.title, isKid: tras
         });
       }
     });
@@ -959,12 +915,7 @@ function showFreeTime(member) {
     busy.sort((a, b) => a.start - b.start);
     const free = [];
     let cur = WORK_START;
-
-    busy.forEach(b => {
-      if (b.start > cur) free.push({ start: cur, end: b.start });
-      cur = Math.max(cur, b.end);
-    });
-
+    busy.forEach(b => { if (b.start > cur) free.push({ start: cur, end: b.start }); cur = Math.max(cur, b.end); });
     if (cur < WORK_END) free.push({ start: cur, end: WORK_END });
     free.forEach(s => totalMin += s.end - s.start);
 
@@ -979,19 +930,13 @@ function showFreeTime(member) {
         html += `<div class="free-slot">✅ ${m2t(s.start)} – ${m2t(s.end)} <span style="opacity:0.6;font-size:12px;margin-left:4px;">(${h > 0 ? h + 'h' : ''}${m > 0 ? ' ' + m + 'min' : ''})</span></div>`;
       });
     }
-
-    busy.forEach(b => {
-      html += `<div class="busy-slot">🔴 ${m2t(b.start)} – ${m2t(b.end)} · ${b.label}${b.isKid ? ' 🚗' : ''}</div>`;
-    });
-
+    busy.forEach(b => { html += `<div class="busy-slot">🔴 ${m2t(b.start)} – ${m2t(b.end)} · ${b.label}${b.isKid ? ' 🚗' : ''}</div>`; });
     html += `</div>`;
   });
 
   const th = Math.floor(totalMin / 60), tm = totalMin % 60;
   const contentEl = document.getElementById('free-content');
-  if (contentEl) {
-    contentEl.innerHTML = `<div class="free-summary"><span>${th}h ${tm > 0 ? tm + 'min' : ''}</span>disponibles Lun–Vie (07–22hs)</div>` + html;
-  }
+  if (contentEl) contentEl.innerHTML = `<div class="free-summary"><span>${th}h ${tm > 0 ? tm + 'min' : ''}</span>disponibles Lun–Vie (07–22hs)</div>` + html;
 
   const panelEl = document.getElementById('free-panel');
   if (panelEl) panelEl.classList.add('open');
@@ -1003,13 +948,7 @@ function closeFreePanel() {
 }
 
 function openManage() {
-  const memberList = [
-    ['mama', '👩', 'Mamá'],
-    ['papa', '👨', 'Papá'],
-    ['hijo1', '🧒', 'Catalina'],
-    ['hijo2', '👶', 'Juan Martin']
-  ];
-
+  const memberList = [['mama','👩','Mamá'],['papa','👨','Papá'],['hijo1','🧒','Catalina'],['hijo2','👶','Juan Martin']];
   let html = '<p style="font-size:13px;color:var(--muted);font-weight:600;margin-bottom:16px;">Eliminá todos los eventos de un miembro o de toda la familia.</p>';
 
   memberList.forEach(([key, icon, label]) => {
@@ -1025,16 +964,12 @@ function openManage() {
       </div>
       ${count > 0
         ? `<button class="manage-del-btn" onclick="deleteByMember('${key}','${label}')">Eliminar todos</button>`
-        : `<span style="font-size:12px;color:var(--muted);font-weight:700;">Sin eventos</span>`
-      }
+        : `<span style="font-size:12px;color:var(--muted);font-weight:700;">Sin eventos</span>`}
     </div>`;
   });
 
   const total = activities.length;
-  if (total > 0) {
-    html += `<hr class="manage-separator">
-    <button class="manage-del-all" onclick="deleteAll()">🗑️ Eliminar TODOS los eventos (${total})</button>`;
-  }
+  if (total > 0) html += `<hr class="manage-separator"><button class="manage-del-all" onclick="deleteAll()">🗑️ Eliminar TODOS los eventos (${total})</button>`;
 
   const contentEl = document.getElementById('manage-content');
   if (contentEl) contentEl.innerHTML = html;
@@ -1050,70 +985,51 @@ function closeManage() {
 
 function deleteByMember(member, label) {
   if (!db) return;
-  
   const evs = activities.filter(a => a.member === member);
   if (!confirm(`¿Eliminar los ${evs.length} eventos de ${label}? Esta acción no se puede deshacer.`)) return;
-
   setSS('load', '⏳ Eliminando…');
   let deletedCount = 0;
-  
   evs.forEach(a => {
     db.ref('calendario/eventos/' + a._key).remove().then(() => {
       deletedCount++;
       if (deletedCount === evs.length) {
         db.ref('registros/historial').push({
-          uid: currentUser.uid,
-          nombre: currentUser.displayName || '',
-          accion: 'eliminar_masivo',
-          detalle: `Eliminó todos los eventos de ${label} (${evs.length})`,
+          uid: currentUser.uid, nombre: currentUser.displayName || '',
+          accion: 'eliminar_masivo', detalle: `Eliminó todos los eventos de ${label} (${evs.length})`,
           fecha: firebase.database.ServerValue.TIMESTAMP
         });
         toast(`🗑️ ${evs.length} eventos de ${label} eliminados`);
         closeManage();
         setTimeout(openManage, 400);
       }
-    }).catch(e => {
-      console.error('Error:', e);
-      setSS('error', '❌ Error');
-      toast('❌ ' + e.message);
-    });
+    }).catch(e => { console.error('Error:', e); setSS('error', '❌ Error'); toast('❌ ' + e.message); });
   });
 }
 
 function deleteAll() {
   if (!db) return;
-  
   const total = activities.length;
   if (!confirm(`¿Eliminar los ${total} eventos de toda la familia? Esta acción NO se puede deshacer.`)) return;
-
   setSS('load', '⏳ Eliminando todo…');
   let deletedCount = 0;
-  
   activities.forEach(a => {
     db.ref('calendario/eventos/' + a._key).remove().then(() => {
       deletedCount++;
       if (deletedCount === total) {
         db.ref('registros/historial').push({
-          uid: currentUser.uid,
-          nombre: currentUser.displayName || '',
-          accion: 'eliminar_todo',
-          detalle: `Eliminó todos los eventos (${total})`,
+          uid: currentUser.uid, nombre: currentUser.displayName || '',
+          accion: 'eliminar_todo', detalle: `Eliminó todos los eventos (${total})`,
           fecha: firebase.database.ServerValue.TIMESTAMP
         });
         toast(`🗑️ ${total} eventos eliminados`);
         closeManage();
       }
-    }).catch(e => {
-      console.error('Error:', e);
-      setSS('error', '❌ Error');
-      toast('❌ ' + e.message);
-    });
+    }).catch(e => { console.error('Error:', e); setSS('error', '❌ Error'); toast('❌ ' + e.message); });
   });
 }
 
 // Asignar login al botón
 document.getElementById('btn-google').addEventListener('click', loginGoogle);
-
 console.log('Script cargado. Dominio:', window.location.hostname);
 </script>
 </body>
