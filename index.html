@@ -193,7 +193,7 @@
   <div class="login-emoji">📅</div>
   <div class="login-title">Calendario Familiar</div>
   <div class="login-sub">Organizate junto a tu familia</div>
-  <button class="google-btn" onclick="loginGoogle()">
+  <button class="google-btn" id="btn-google">
     <svg class="google-icon" viewBox="0 0 48 48">
       <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
       <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
@@ -325,170 +325,158 @@
 
 <div id="toast"></div>
 
-<script type="module">
-// Esperar a que el DOM esté completamente cargado
-document.addEventListener('DOMContentLoaded', async () => {
-  console.log('DOM cargado, inicializando...');
-  
-  // Importar Firebase
-  const { initializeApp } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js");
-  const { getDatabase, ref, onValue, push, remove, serverTimestamp, set } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js");
-  const { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged, signInWithRedirect, getRedirectResult } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 
-  const firebaseConfig = {
-    apiKey: "AIzaSyDQH7D54SyerTRa8Y8BXFDFB5cAJkA8p2Q",
-    authDomain: "calendariofamiliar-edeb3.firebaseapp.com",
-    projectId: "calendariofamiliar-edeb3",
-    storageBucket: "calendariofamiliar-edeb3.firebasestorage.app",
-    messagingSenderId: "251743449792",
-    appId: "1:251743449792:web:7dfa1ac95b35648edff325",
-    databaseURL: "https://calendariofamiliar-edeb3-default-rtdb.firebaseio.com"
-  };
+<script>
+// Configuración Firebase
+const firebaseConfig = {
+  apiKey: "AIzaSyDQH7D54SyerTRa8Y8BXFDFB5cAJkA8p2Q",
+  authDomain: "calendariofamiliar-edeb3.firebaseapp.com",
+  projectId: "calendariofamiliar-edeb3",
+  storageBucket: "calendariofamiliar-edeb3.firebasestorage.app",
+  messagingSenderId: "251743449792",
+  appId: "1:251743449792:web:7dfa1ac95b35648edff325",
+  databaseURL: "https://calendariofamiliar-edeb3-default-rtdb.firebaseio.com"
+};
 
-  // Inicializar Firebase
-  let fbApp, db, auth, prov;
-  try {
-    fbApp = initializeApp(firebaseConfig);
-    db = getDatabase(fbApp);
-    auth = getAuth(fbApp);
-    prov = new GoogleAuthProvider();
-    
-    prov.addScope('https://www.googleapis.com/auth/userinfo.email');
-    prov.addScope('https://www.googleapis.com/auth/userinfo.profile');
-    prov.setCustomParameters({ prompt: 'select_account' });
-    
-    console.log('Firebase inicializado correctamente');
-  } catch (e) {
-    console.error('Error al inicializar Firebase:', e);
-    const loading = document.getElementById('loading');
-    if (loading) {
-      loading.innerHTML = '<div style="color:white;text-align:center;padding:20px;">❌ Error al cargar. Recarga la página.</div>';
-    }
+// Inicializar Firebase
+let db, auth;
+try {
+  firebase.initializeApp(firebaseConfig);
+  db = firebase.database();
+  auth = firebase.auth();
+  console.log('Firebase inicializado');
+} catch (e) {
+  console.error('Error Firebase:', e);
+  document.getElementById('loading').innerHTML = '<div style="color:white;text-align:center;padding:20px;">❌ Error al cargar Firebase</div>';
+}
+
+// Variables globales
+const names = { mama: 'Mamá', papa: 'Papá', hijo1: 'Catalina', hijo2: 'Juan Martin' };
+const MONTHS = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+const DAYS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+const colors = { mama: '#ec4899', papa: '#3b82f6', hijo1: '#f59e0b', hijo2: '#10b981' };
+const WORK_START = 7 * 60, WORK_END = 22 * 60, BUFFER = 15;
+const WORK_DAYS = [1, 2, 3, 4, 5];
+
+let activities = [];
+let currentUser = null;
+let notifTimer = null;
+let filterMember = 'all';
+let calYear = new Date().getFullYear();
+let calMonth = new Date().getMonth();
+let selectedDate = null;
+
+const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
+// Funciones auxiliares
+function setSS(s, m) {
+  const e = document.getElementById('sync-status');
+  if (e) { e.className = 'sync-' + s; e.textContent = m; }
+}
+
+function toast(m) {
+  const e = document.getElementById('toast');
+  if (e) { e.textContent = m; e.classList.add('show'); setTimeout(() => e.classList.remove('show'), 2500); }
+}
+
+function hideLoad() {
+  const e = document.getElementById('loading');
+  if (e) { e.classList.add('hide'); setTimeout(() => e.style.display = 'none', 400); }
+}
+
+function t2m(t) { if (!t) return null; const [h, m] = t.split(':').map(Number); return h * 60 + m; }
+function m2t(m) { return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`; }
+
+// Auth
+function loginGoogle() {
+  if (!auth) {
+    toast('❌ Firebase no está listo');
     return;
   }
-
-  // Variables globales
-  const names = { mama: 'Mamá', papa: 'Papá', hijo1: 'Catalina', hijo2: 'Juan Martin' };
-  const MONTHS = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
-  const DAYS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
-  const colors = { mama: '#ec4899', papa: '#3b82f6', hijo1: '#f59e0b', hijo2: '#10b981' };
-  const WORK_START = 7 * 60, WORK_END = 22 * 60, BUFFER = 15;
-  const WORK_DAYS = [1, 2, 3, 4, 5];
-
-  let activities = [];
-  let currentUser = null;
-  let notifTimer = null;
-  let filterMember = 'all';
-  let calYear = new Date().getFullYear();
-  let calMonth = new Date().getMonth();
-  let selectedDate = null;
-
-  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-
-  // Funciones auxiliares
-  function setSS(s, m) {
-    const e = document.getElementById('sync-status');
-    if (e) { e.className = 'sync-' + s; e.textContent = m; }
-  }
-
-  function toast(m) {
-    const e = document.getElementById('toast');
-    if (e) { e.textContent = m; e.classList.add('show'); setTimeout(() => e.classList.remove('show'), 2500); }
-  }
-
-  function hideLoad() {
-    const e = document.getElementById('loading');
-    if (e) { e.classList.add('hide'); setTimeout(() => e.style.display = 'none', 400); }
-  }
-
-  function t2m(t) { if (!t) return null; const [h, m] = t.split(':').map(Number); return h * 60 + m; }
-  function m2t(m) { return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`; }
-
-  // Auth
-  window.loginGoogle = async () => {
-    try {
-      setSS('load', '⏳ Conectando...');
-      console.log('Intentando login...');
-      
-      if (isMobile) {
-        await signInWithRedirect(auth, prov);
-      } else {
-        await signInWithPopup(auth, prov);
-      }
-    } catch (e) {
-      console.error('Error login:', e);
+  
+  const provider = new firebase.auth.GoogleAuthProvider();
+  provider.addScope('https://www.googleapis.com/auth/userinfo.email');
+  provider.addScope('https://www.googleapis.com/auth/userinfo.profile');
+  provider.setCustomParameters({ prompt: 'select_account' });
+  
+  setSS('load', '⏳ Conectando...');
+  
+  if (isMobile) {
+    auth.signInWithRedirect(provider).catch(e => {
+      console.error('Error redirect:', e);
+      toast('❌ Error: ' + e.message);
+      setSS('error', '❌ Error');
+    });
+  } else {
+    auth.signInWithPopup(provider).then(result => {
+      console.log('Login exitoso');
+    }).catch(e => {
+      console.error('Error popup:', e);
       let msg = '❌ Error al iniciar sesión';
-      
-      if (e.code === 'auth/popup-blocked') {
-        msg = '❌ Popup bloqueado';
-        try { await signInWithRedirect(auth, prov); return; } catch (e2) {}
-      } else if (e.code === 'auth/unauthorized-domain') {
-        msg = '❌ Dominio no autorizado en Firebase';
-      } else if (e.code === 'auth/configuration-not-found') {
-        msg = '❌ Google Sign-in no habilitado en Firebase';
-      }
+      if (e.code === 'auth/popup-blocked') msg = '❌ Popup bloqueado por el navegador';
+      else if (e.code === 'auth/unauthorized-domain') msg = '❌ Dominio no autorizado en Firebase';
+      else if (e.code === 'auth/configuration-not-found') msg = '❌ Google Sign-in no habilitado';
+      else if (e.message) msg = '❌ ' + e.message;
       
       toast(msg);
       setSS('error', '❌ Error');
-    }
-  };
-
-  if (isMobile) {
-    getRedirectResult(auth).then((result) => {
-      if (result) console.log('Redirect exitoso');
-    }).catch((error) => {
-      console.error('Error redirect:', error);
-      toast('❌ Error: ' + error.message);
     });
   }
+}
 
-  window.logout = async () => {
-    try {
-      closeUserMenu();
-      await signOut(auth);
-      activities = [];
-      const app = document.getElementById('app');
-      if (app) app.innerHTML = '';
-      const login = document.getElementById('login-screen');
-      if (login) login.classList.add('show');
-      toast('👋 Sesión cerrada');
-    } catch (e) {
-      console.error('Error logout:', e);
-    }
-  };
+// Manejar redirect en móviles
+if (isMobile && auth) {
+  auth.getRedirectResult().then(result => {
+    if (result.user) console.log('Redirect exitoso');
+  }).catch(error => {
+    console.error('Error redirect result:', error);
+  });
+}
 
-  onAuthStateChanged(auth, async (user) => {
+function logout() {
+  if (!auth) return;
+  closeUserMenu();
+  auth.signOut().then(() => {
+    activities = [];
+    document.getElementById('app').innerHTML = '';
+    document.getElementById('login-screen').classList.add('show');
+    toast('👋 Sesión cerrada');
+  }).catch(e => {
+    console.error('Error logout:', e);
+  });
+}
+
+// Auth state
+if (auth) {
+  auth.onAuthStateChanged(user => {
     console.log('Auth state:', user ? 'logueado' : 'no logueado');
     
     if (!user) {
       hideLoad();
-      const login = document.getElementById('login-screen');
-      if (login) login.classList.add('show');
+      document.getElementById('login-screen').classList.add('show');
       return;
     }
 
     currentUser = user;
-    const login = document.getElementById('login-screen');
-    if (login) login.classList.remove('show');
-    
-    const umName = document.getElementById('um-name');
-    const umEmail = document.getElementById('um-email');
-    if (umName) umName.textContent = user.displayName || 'Usuario';
-    if (umEmail) umEmail.textContent = user.email || '';
+    document.getElementById('login-screen').classList.remove('show');
+    document.getElementById('um-name').textContent = user.displayName || 'Usuario';
+    document.getElementById('um-email').textContent = user.email || '';
 
-    try {
-      await set(ref(db, 'usuarios/' + user.uid), {
-        uid: user.uid,
-        nombre: user.displayName || '',
-        email: user.email || '',
-        fotoURL: user.photoURL || '',
-        ultimaConexion: serverTimestamp()
-      });
-    } catch (e) {
-      console.error('Error guardando usuario:', e);
-    }
+    // Guardar usuario
+    db.ref('usuarios/' + user.uid).set({
+      uid: user.uid,
+      nombre: user.displayName || '',
+      email: user.email || '',
+      fotoURL: user.photoURL || '',
+      ultimaConexion: firebase.database.ServerValue.TIMESTAMP
+    });
 
-    onValue(ref(db, 'calendario/eventos'), (snap) => {
+    // Escuchar eventos
+    db.ref('calendario/eventos').on('value', snap => {
       activities = [];
       const d = snap.val();
       if (d) {
@@ -498,182 +486,127 @@ document.addEventListener('DOMContentLoaded', async () => {
       setSS('ok', '✅ Sincronizado');
       render();
       scheduleNotif();
-    }, (err) => {
+    }, err => {
       console.error('Error DB:', err);
       setSS('error', '❌ Sin conexión');
       hideLoad();
     });
 
+    // Notificaciones
     if ('Notification' in window && Notification.permission === 'default') {
-      const banner = document.getElementById('notif-banner');
-      if (banner) banner.classList.add('show');
+      document.getElementById('notif-banner').classList.add('show');
     }
   });
+}
 
-  // Notificaciones
-  window.requestNotifPermission = async () => {
-    try {
-      const p = await Notification.requestPermission();
-      const banner = document.getElementById('notif-banner');
-      if (banner) banner.classList.remove('show');
-      toast(p === 'granted' ? '🔔 Activadas' : '🔕 Desactivadas');
-      if (p === 'granted') scheduleNotif();
-    } catch (e) {
-      console.error('Error notif:', e);
-    }
-  };
-
-  window.dismissNotifBanner = () => {
-    const banner = document.getElementById('notif-banner');
-    if (banner) banner.classList.remove('show');
-  };
-
-  function scheduleNotif() {
-    if (!('Notification' in window) || Notification.permission !== 'granted') return;
-    if (notifTimer) clearInterval(notifTimer);
-
-    function check() {
-      const now = new Date();
-      const todayDow = now.getDay();
-      const nowMin = now.getHours() * 60 + now.getMinutes();
-
-      activities.forEach(a => {
-        if (parseInt(a.day) !== todayDow || !a.time) return;
-        const diff = t2m(a.time) - nowMin;
-        if (diff >= 29 && diff <= 31) {
-          const key = `n_${a._key}_${now.toDateString()}`;
-          if (!sessionStorage.getItem(key)) {
-            sessionStorage.setItem(key, '1');
-            new Notification('📅 Recordatorio', {
-              body: `${names[a.member] || a.member}: "${a.title}" en 30 min`
-            });
-          }
-        }
-      });
-    }
-
-    check();
-    notifTimer = setInterval(check, 60000);
+// Notificaciones
+function requestNotifPermission() {
+  if (!('Notification' in window)) {
+    toast('❌ Notificaciones no soportadas');
+    return;
   }
+  
+  Notification.requestPermission().then(p => {
+    document.getElementById('notif-banner').classList.remove('show');
+    toast(p === 'granted' ? '🔔 Activadas' : '🔕 Desactivadas');
+    if (p === 'granted') scheduleNotif();
+  });
+}
 
-  // Render
-  window.render = function () {
-    const app = document.getElementById('app');
-    if (!app) return;
+function dismissNotifBanner() {
+  document.getElementById('notif-banner').classList.remove('show');
+}
 
-    const av = currentUser?.photoURL
-      ? `<img src="${currentUser.photoURL}" class="user-avatar" onclick="toggleUserMenu()" referrerpolicy="no-referrer">`
-      : `<div class="user-avatar-ph" onclick="toggleUserMenu()">👤</div>`;
+function scheduleNotif() {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  if (notifTimer) clearInterval(notifTimer);
 
-    let html = `
-      <div class="header">
-        <div class="header-top">
-          <div><h1>📅 Calendario Familiar</h1>
-            <div class="header-date">${new Date().toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })}</div>
-          </div>${av}
-        </div>
-      </div>
-      <div class="member-filters">
-        <button class="mf-btn${filterMember === 'all' ? ' active' : ''}" style="${filterMember === 'all' ? 'background:#4f46e5;color:white' : ''}" onclick="setFilter('all')">Todos</button>`;
+  function check() {
+    const now = new Date();
+    const todayDow = now.getDay();
+    const nowMin = now.getHours() * 60 + now.getMinutes();
 
-    [['mama', '👩'], ['papa', '👨'], ['hijo1', '🧒'], ['hijo2', '👶']].forEach(([k, ic]) => {
-      const act = filterMember === k;
-      html += `<div class="mf-wrap">
-        <button class="mf-btn${act ? ' active' : ''}" style="${act ? 'background:' + colors[k] + ';color:white' : ''}" onclick="setFilter('${k}')">${ic} ${names[k]}</button>
-        <button class="mf-free" onclick="showFreeTime('${k}')">🕐</button>
-      </div>`;
-    });
-
-    html += `</div>`;
-    html += renderCalendar();
-    html += `<button class="fab" onclick="add()">+</button>`;
-    app.innerHTML = html;
-  };
-
-  function renderCalendar() {
-    const today = new Date();
-    const first = new Date(calYear, calMonth, 1);
-    const last = new Date(calYear, calMonth + 1, 0);
-    const startDow = (first.getDay() + 6) % 7;
-    const total = last.getDate();
-
-    let html = `
-      <div class="cal-nav">
-        <button onclick="prevMonth()">‹</button>
-        <span class="cal-month">${MONTHS[calMonth]} ${calYear}</span>
-        <button onclick="nextMonth()">›</button>
-      </div>
-      <div class="cal-grid">
-        <div class="cal-weekdays">
-          <div class="cal-wd">Lun</div><div class="cal-wd">Mar</div><div class="cal-wd">Mié</div>
-          <div class="cal-wd">Jue</div><div class="cal-wd">Vie</div><div class="cal-wd">Sáb</div><div class="cal-wd">Dom</div>
-        </div>
-        <div class="cal-days">`;
-
-    for (let i = 0; i < startDow; i++) html += `<div class="cal-day empty"></div>`;
-
-    for (let day = 1; day <= total; day++) {
-      const date = new Date(calYear, calMonth, day);
-      const ds = `${calYear}-${String(calMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-      const dow = date.getDay();
-      const isToday = date.toDateString() === today.toDateString();
-      const isSel = selectedDate === ds;
-
-      let evs = activities.filter(a => {
-        if (parseInt(a.day) !== dow) return false;
-        if (a.fecha) return a.fecha === ds;
-        return true;
-      });
-      if (filterMember !== 'all') evs = evs.filter(a => a.member === filterMember);
-      const count = evs.length;
-      const memberSet = [...new Set(evs.map(a => a.member))];
-
-      let badges = '';
-      if (count > 0) {
-        if (memberSet.length === 1) {
-          badges = `<div class="cal-badge" style="background:${colors[memberSet[0]]}">${count}</div>`;
-        } else {
-          const dots = memberSet.slice(0, 3).map(m => `<div style="width:6px;height:6px;border-radius:50%;background:${colors[m]}"></div>`).join('');
-          badges = `<div style="display:flex;gap:2px;justify-content:center;">${dots}</div><div class="cal-badge" style="background:#4f46e5">${count}</div>`;
+    activities.forEach(a => {
+      if (parseInt(a.day) !== todayDow || !a.time) return;
+      const diff = t2m(a.time) - nowMin;
+      if (diff >= 29 && diff <= 31) {
+        const key = `n_${a._key}_${now.toDateString()}`;
+        if (!sessionStorage.getItem(key)) {
+          sessionStorage.setItem(key, '1');
+          new Notification('📅 Recordatorio', {
+            body: `${names[a.member] || a.member}: "${a.title}" en 30 min`
+          });
         }
       }
-
-      html += `<div class="cal-day${isToday ? ' today' : ''}${isSel ? ' selected' : ''}" onclick="selectDay('${ds}')">
-        <div class="cal-dn">${day}</div>
-        ${badges}
-      </div>`;
-    }
-
-    const endDow = (last.getDay() + 6) % 7;
-    for (let i = endDow + 1; i < 7; i++) html += `<div class="cal-day empty"></div>`;
-
-    html += `</div></div>`;
-
-    html += `<div class="cal-legend">`;
-    Object.entries(names).forEach(([k, n]) => {
-      html += `<div class="legend-item"><div class="legend-dot" style="background:${colors[k]}"></div>${n}</div>`;
     });
-    html += `</div>`;
-
-    return html;
   }
 
-  window.prevMonth = () => { calMonth--; if (calMonth < 0) { calMonth = 11; calYear--; } render(); };
-  window.nextMonth = () => { calMonth++; if (calMonth > 11) { calMonth = 0; calYear++; } render(); };
+  check();
+  notifTimer = setInterval(check, 60000);
+}
 
-  window.selectDay = function (ds) {
-    selectedDate = ds;
-    render();
-    openDayPanel(ds);
-  };
+// Render
+function render() {
+  const app = document.getElementById('app');
+  if (!app) return;
 
-  function openDayPanel(ds) {
-    const d = new Date(ds + 'T12:00:00');
-    const dow = d.getDay();
-    const label = d.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  const av = currentUser?.photoURL
+    ? `<img src="${currentUser.photoURL}" class="user-avatar" onclick="toggleUserMenu()" referrerpolicy="no-referrer">`
+    : `<div class="user-avatar-ph" onclick="toggleUserMenu()">👤</div>`;
 
-    const titleEl = document.getElementById('day-panel-title');
-    if (titleEl) titleEl.textContent = label.charAt(0).toUpperCase() + label.slice(1);
+  let html = `
+    <div class="header">
+      <div class="header-top">
+        <div><h1>📅 Calendario Familiar</h1>
+          <div class="header-date">${new Date().toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })}</div>
+        </div>${av}
+      </div>
+    </div>
+    <div class="member-filters">
+      <button class="mf-btn${filterMember === 'all' ? ' active' : ''}" style="${filterMember === 'all' ? 'background:#4f46e5;color:white' : ''}" onclick="setFilter('all')">Todos</button>`;
+
+  [['mama', '👩'], ['papa', '👨'], ['hijo1', '🧒'], ['hijo2', '👶']].forEach(([k, ic]) => {
+    const act = filterMember === k;
+    html += `<div class="mf-wrap">
+      <button class="mf-btn${act ? ' active' : ''}" style="${act ? 'background:' + colors[k] + ';color:white' : ''}" onclick="setFilter('${k}')">${ic} ${names[k]}</button>
+      <button class="mf-free" onclick="showFreeTime('${k}')">🕐</button>
+    </div>`;
+  });
+
+  html += `</div>`;
+  html += renderCalendar();
+  html += `<button class="fab" onclick="add()">+</button>`;
+  app.innerHTML = html;
+}
+
+function renderCalendar() {
+  const today = new Date();
+  const first = new Date(calYear, calMonth, 1);
+  const last = new Date(calYear, calMonth + 1, 0);
+  const startDow = (first.getDay() + 6) % 7;
+  const total = last.getDate();
+
+  let html = `
+    <div class="cal-nav">
+      <button onclick="prevMonth()">‹</button>
+      <span class="cal-month">${MONTHS[calMonth]} ${calYear}</span>
+      <button onclick="nextMonth()">›</button>
+    </div>
+    <div class="cal-grid">
+      <div class="cal-weekdays">
+        <div class="cal-wd">Lun</div><div class="cal-wd">Mar</div><div class="cal-wd">Mié</div>
+        <div class="cal-wd">Jue</div><div class="cal-wd">Vie</div><div class="cal-wd">Sáb</div><div class="cal-wd">Dom</div>
+      </div>
+      <div class="cal-days">`;
+
+  for (let i = 0; i < startDow; i++) html += `<div class="cal-day empty"></div>`;
+
+  for (let day = 1; day <= total; day++) {
+    const date = new Date(calYear, calMonth, day);
+    const ds = `${calYear}-${String(calMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    const dow = date.getDay();
+    const isToday = date.toDateString() === today.toDateString();
+    const isSel = selectedDate === ds;
 
     let evs = activities.filter(a => {
       if (parseInt(a.day) !== dow) return false;
@@ -681,395 +614,479 @@ document.addEventListener('DOMContentLoaded', async () => {
       return true;
     });
     if (filterMember !== 'all') evs = evs.filter(a => a.member === filterMember);
-    evs.sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+    const count = evs.length;
+    const memberSet = [...new Set(evs.map(a => a.member))];
 
-    let html = '';
-    if (evs.length === 0) {
-      html = `<div class="day-empty"><div class="ei">📭</div><p style="font-weight:700">Sin eventos este día</p></div>`;
-    } else {
-      evs.forEach(a => {
-        const c = colors[a.member] || '#4f46e5';
-        const ic = a.member === 'mama' ? '👩' : a.member === 'papa' ? '👨' : a.member === 'hijo1' ? '🧒' : '👶';
-        const canDel = currentUser && a.creadoPor === currentUser.uid;
-        const tr = a.time ? (a.timeFin ? `${a.time} – ${a.timeFin}` : a.time) : '';
-
-        html += `<div class="day-ev" style="border-left-color:${c}">
-          <div class="day-ev-time">${tr}</div>
-          <div class="day-ev-title">${a.title}</div>
-          <div class="day-ev-meta">${ic} ${names[a.member] || a.member}${a.location ? ' · 📍' + a.location : ''}</div>
-          ${a.esRepetido ? `<div style="font-size:11px;color:var(--muted);margin-top:3px;font-weight:700;">🔁 Semana ${a.semana}/${a.totalSemanas}</div>` : ''}
-          ${a.traslado && a.traslado !== 'none' ? `<div style="font-size:11px;color:#92400e;margin-top:3px;font-weight:700;">🚗 Lleva: ${a.traslado === 'ambos' ? 'Mamá y Papá' : names[a.traslado]}</div>` : ''}
-          ${canDel ? `<button class="del-btn" onclick="del('${a._key}')">×</button>` : ''}
-        </div>`;
-      });
+    let badges = '';
+    if (count > 0) {
+      if (memberSet.length === 1) {
+        badges = `<div class="cal-badge" style="background:${colors[memberSet[0]]}">${count}</div>`;
+      } else {
+        const dots = memberSet.slice(0, 3).map(m => `<div style="width:6px;height:6px;border-radius:50%;background:${colors[m]}"></div>`).join('');
+        badges = `<div style="display:flex;gap:2px;justify-content:center;">${dots}</div><div class="cal-badge" style="background:#4f46e5">${count}</div>`;
+      }
     }
-    html += `<button class="day-add-btn" onclick="closeDayPanel();add()">+ Agregar evento este día</button>`;
 
-    const contentEl = document.getElementById('day-panel-content');
-    if (contentEl) contentEl.innerHTML = html;
-
-    const panelEl = document.getElementById('day-panel');
-    if (panelEl) panelEl.classList.add('open');
+    html += `<div class="cal-day${isToday ? ' today' : ''}${isSel ? ' selected' : ''}" onclick="selectDay('${ds}')">
+      <div class="cal-dn">${day}</div>
+      ${badges}
+    </div>`;
   }
 
-  window.closeDayPanel = () => {
-    const panelEl = document.getElementById('day-panel');
-    if (panelEl) panelEl.classList.remove('open');
-    selectedDate = null;
-    render();
-  };
+  const endDow = (last.getDay() + 6) % 7;
+  for (let i = endDow + 1; i < 7; i++) html += `<div class="cal-day empty"></div>`;
 
-  window.setFilter = f => { filterMember = f; render(); };
+  html += `</div></div>`;
 
-  window.toggleUserMenu = () => {
-    const menu = document.getElementById('user-menu');
-    if (menu) menu.classList.toggle('open');
-  };
+  html += `<div class="cal-legend">`;
+  Object.entries(names).forEach(([k, n]) => {
+    html += `<div class="legend-item"><div class="legend-dot" style="background:${colors[k]}"></div>${n}</div>`;
+  });
+  html += `</div>`;
 
-  window.closeUserMenu = () => {
-    const menu = document.getElementById('user-menu');
-    if (menu) menu.classList.remove('open');
-  };
+  return html;
+}
 
-  document.addEventListener('click', e => {
-    const m = document.getElementById('user-menu');
-    if (m && m.classList.contains('open') && !m.contains(e.target) && !e.target.closest('.user-avatar,.user-avatar-ph')) {
-      closeUserMenu();
-    }
+function prevMonth() { calMonth--; if (calMonth < 0) { calMonth = 11; calYear--; } render(); }
+function nextMonth() { calMonth++; if (calMonth > 11) { calMonth = 0; calYear++; } render(); }
+
+function selectDay(ds) {
+  selectedDate = ds;
+  render();
+  openDayPanel(ds);
+}
+
+function openDayPanel(ds) {
+  const d = new Date(ds + 'T12:00:00');
+  const dow = d.getDay();
+  const label = d.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+
+  const titleEl = document.getElementById('day-panel-title');
+  if (titleEl) titleEl.textContent = label.charAt(0).toUpperCase() + label.slice(1);
+
+  let evs = activities.filter(a => {
+    if (parseInt(a.day) !== dow) return false;
+    if (a.fecha) return a.fecha === ds;
+    return true;
+  });
+  if (filterMember !== 'all') evs = evs.filter(a => a.member === filterMember);
+  evs.sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+
+  let html = '';
+  if (evs.length === 0) {
+    html = `<div class="day-empty"><div class="ei">📭</div><p style="font-weight:700">Sin eventos este día</p></div>`;
+  } else {
+    evs.forEach(a => {
+      const c = colors[a.member] || '#4f46e5';
+      const ic = a.member === 'mama' ? '👩' : a.member === 'papa' ? '👨' : a.member === 'hijo1' ? '🧒' : '👶';
+      const canDel = currentUser && a.creadoPor === currentUser.uid;
+      const tr = a.time ? (a.timeFin ? `${a.time} – ${a.timeFin}` : a.time) : '';
+
+      html += `<div class="day-ev" style="border-left-color:${c}">
+        <div class="day-ev-time">${tr}</div>
+        <div class="day-ev-title">${a.title}</div>
+        <div class="day-ev-meta">${ic} ${names[a.member] || a.member}${a.location ? ' · 📍' + a.location : ''}</div>
+        ${a.esRepetido ? `<div style="font-size:11px;color:var(--muted);margin-top:3px;font-weight:700;">🔁 Semana ${a.semana}/${a.totalSemanas}</div>` : ''}
+        ${a.traslado && a.traslado !== 'none' ? `<div style="font-size:11px;color:#92400e;margin-top:3px;font-weight:700;">🚗 Lleva: ${a.traslado === 'ambos' ? 'Mamá y Papá' : names[a.traslado]}</div>` : ''}
+        ${canDel ? `<button class="del-btn" onclick="del('${a._key}')">×</button>` : ''}
+      </div>`;
+    });
+  }
+  html += `<button class="day-add-btn" onclick="closeDayPanel();add()">+ Agregar evento este día</button>`;
+
+  const contentEl = document.getElementById('day-panel-content');
+  if (contentEl) contentEl.innerHTML = html;
+
+  const panelEl = document.getElementById('day-panel');
+  if (panelEl) panelEl.classList.add('open');
+}
+
+function closeDayPanel() {
+  const panelEl = document.getElementById('day-panel');
+  if (panelEl) panelEl.classList.remove('open');
+  selectedDate = null;
+  render();
+}
+
+function setFilter(f) { filterMember = f; render(); }
+
+function toggleUserMenu() {
+  const menu = document.getElementById('user-menu');
+  if (menu) menu.classList.toggle('open');
+}
+
+function closeUserMenu() {
+  const menu = document.getElementById('user-menu');
+  if (menu) menu.classList.remove('open');
+}
+
+document.addEventListener('click', e => {
+  const m = document.getElementById('user-menu');
+  if (m && m.classList.contains('open') && !m.contains(e.target) && !e.target.closest('.user-avatar,.user-avatar-ph')) {
+    closeUserMenu();
+  }
+});
+
+function onMemberChange() {
+  const isKid = ['hijo1', 'hijo2'].includes(document.getElementById('m').value);
+  const field = document.getElementById('traslado-field');
+  if (field) field.style.display = isKid ? 'block' : 'none';
+  if (!isKid) {
+    const select = document.getElementById('traslado');
+    if (select) select.value = 'none';
+  }
+}
+
+function add() {
+  const d = document.getElementById('d');
+  if (d) d.value = new Date().getDay() || 1;
+  const modal = document.getElementById('modal');
+  if (modal) modal.classList.add('open');
+}
+
+function closeModal() {
+  const modal = document.getElementById('modal');
+  if (modal) modal.classList.remove('open');
+
+  ['t', 'ti', 'tf', 'l'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
   });
 
-  window.onMemberChange = () => {
-    const isKid = ['hijo1', 'hijo2'].includes(document.getElementById('m').value);
-    const field = document.getElementById('traslado-field');
-    if (field) field.style.display = isKid ? 'block' : 'none';
-    if (!isKid) {
-      const select = document.getElementById('traslado');
-      if (select) select.value = 'none';
+  const rep = document.getElementById('rep');
+  if (rep) rep.value = 'none';
+
+  const traslado = document.getElementById('traslado');
+  if (traslado) traslado.value = 'none';
+
+  const field = document.getElementById('traslado-field');
+  if (field) field.style.display = 'none';
+}
+
+function save() {
+  if (!db || !currentUser) {
+    toast('❌ No estás conectado');
+    return;
+  }
+
+  const title = document.getElementById('t').value.trim();
+  const ti = document.getElementById('ti').value;
+  const tf = document.getElementById('tf').value;
+
+  if (!title || !ti) { toast('⚠️ Ingresá título y hora de inicio'); return; }
+  if (tf && tf <= ti) { toast('⚠️ La hora de fin debe ser mayor al inicio'); return; }
+
+  const member = document.getElementById('m').value;
+  const day = parseInt(document.getElementById('d').value);
+  const loc = document.getElementById('l').value.trim();
+  const rep = document.getElementById('rep').value;
+  const tras = document.getElementById('traslado').value;
+
+  function getDatesForDay(targetDow) {
+    const dates = [];
+    const yearStart = new Date(new Date().getFullYear(), 0, 1);
+    const yearEnd = new Date(new Date().getFullYear(), 11, 31);
+    const d = new Date(yearStart);
+    while (d.getDay() !== targetDow) d.setDate(d.getDate() + 1);
+    while (d <= yearEnd) {
+      dates.push(d.toISOString().split('T')[0]);
+      d.setDate(d.getDate() + 7);
     }
-  };
+    return dates;
+  }
 
-  window.add = () => {
-    const d = document.getElementById('d');
-    if (d) d.value = new Date().getDay() || 1;
-    const modal = document.getElementById('modal');
-    if (modal) modal.classList.add('open');
-  };
+  function getNextDate(targetDow) {
+    const t = new Date();
+    const diff = (targetDow - t.getDay() + 7) % 7;
+    const d = new Date(t);
+    d.setDate(t.getDate() + (diff === 0 ? 0 : diff));
+    d.setHours(0, 0, 0, 0);
+    return d.toISOString().split('T')[0];
+  }
 
-  window.closeModal = () => {
-    const modal = document.getElementById('modal');
-    if (modal) modal.classList.remove('open');
+  const isRepeat = rep !== 'none';
+  const repDow = isRepeat ? parseInt(rep) : day;
+  const dates = isRepeat ? getDatesForDay(repDow) : [getNextDate(day)];
+  const eventDay = isRepeat ? repDow : day;
 
-    ['t', 'ti', 'tf', 'l'].forEach(id => {
-      const el = document.getElementById(id);
-      if (el) el.value = '';
-    });
+  setSS('load', '⏳ Guardando…');
+  const gid = isRepeat ? `g_${Date.now()}` : null;
+  let savedCount = 0;
 
-    const rep = document.getElementById('rep');
-    if (rep) rep.value = 'none';
+  dates.forEach((date, i) => {
+    const ev = {
+      member, title, day: eventDay,
+      time: ti, timeFin: tf || null, location: loc,
+      traslado: ['hijo1', 'hijo2'].includes(member) ? tras : 'none',
+      fecha: date,
+      creadoPor: currentUser.uid,
+      creadoPorNombre: currentUser.displayName || '',
+      creadoEn: firebase.database.ServerValue.TIMESTAMP,
+    };
+    
+    if (gid) {
+      ev.groupId = gid;
+      ev.esRepetido = true;
+      ev.semana = i + 1;
+      ev.totalSemanas = dates.length;
+    }
 
-    const traslado = document.getElementById('traslado');
-    if (traslado) traslado.value = 'none';
-
-    const field = document.getElementById('traslado-field');
-    if (field) field.style.display = 'none';
-  };
-
-  window.save = async () => {
-    const title = document.getElementById('t').value.trim();
-    const ti = document.getElementById('ti').value;
-    const tf = document.getElementById('tf').value;
-
-    if (!title || !ti) { toast('⚠️ Ingresá título y hora de inicio'); return; }
-    if (tf && tf <= ti) { toast('⚠️ La hora de fin debe ser mayor al inicio'); return; }
-
-    const member = document.getElementById('m').value;
-    const day = parseInt(document.getElementById('d').value);
-    const loc = document.getElementById('l').value.trim();
-    const rep = document.getElementById('rep').value;
-    const tras = document.getElementById('traslado').value;
-
-    function getDatesForDay(targetDow) {
-      const dates = [];
-      const yearStart = new Date(new Date().getFullYear(), 0, 1);
-      const yearEnd = new Date(new Date().getFullYear(), 11, 31);
-      const d = new Date(yearStart);
-      while (d.getDay() !== targetDow) d.setDate(d.getDate() + 1);
-      while (d <= yearEnd) {
-        dates.push(d.toISOString().split('T')[0]);
-        d.setDate(d.getDate() + 7);
+    db.ref('calendario/eventos').push(ev).then(() => {
+      savedCount++;
+      if (savedCount === dates.length) {
+        db.ref('registros/historial').push({
+          uid: currentUser.uid,
+          nombre: currentUser.displayName || '',
+          accion: 'crear_evento',
+          detalle: isRepeat
+            ? `Creó "${title}" para ${names[member]} todos los ${DAYS[repDow]} del año (${dates.length} eventos)`
+            : `Creó "${title}" para ${names[member]}`,
+          fecha: firebase.database.ServerValue.TIMESTAMP
+        });
+        closeModal();
+        toast(isRepeat ? `✅ ${dates.length} eventos creados` : '✅ Guardado');
       }
-      return dates;
-    }
-
-    function getNextDate(targetDow) {
-      const t = new Date();
-      const diff = (targetDow - t.getDay() + 7) % 7;
-      const d = new Date(t);
-      d.setDate(t.getDate() + (diff === 0 ? 0 : diff));
-      d.setHours(0, 0, 0, 0);
-      return d.toISOString().split('T')[0];
-    }
-
-    const isRepeat = rep !== 'none';
-    const repDow = isRepeat ? parseInt(rep) : day;
-    const dates = isRepeat ? getDatesForDay(repDow) : [getNextDate(day)];
-    const eventDay = isRepeat ? repDow : day;
-
-    try {
-      setSS('load', '⏳ Guardando…');
-      const gid = isRepeat ? `g_${Date.now()}` : null;
-
-      for (let i = 0; i < dates.length; i++) {
-        const ev = {
-          member, title, day: eventDay,
-          time: ti, timeFin: tf || null, location: loc,
-          traslado: ['hijo1', 'hijo2'].includes(member) ? tras : 'none',
-          fecha: dates[i],
-          creadoPor: currentUser.uid,
-          creadoPorNombre: currentUser.displayName || '',
-          creadoEn: serverTimestamp(),
-          ...(gid && { groupId: gid, esRepetido: true, semana: i + 1, totalSemanas: dates.length })
-        };
-        await push(ref(db, 'calendario/eventos'), ev);
-      }
-
-      await push(ref(db, 'registros/historial'), {
-        uid: currentUser.uid,
-        nombre: currentUser.displayName || '',
-        accion: 'crear_evento',
-        detalle: isRepeat
-          ? `Creó "${title}" para ${names[member]} todos los ${DAYS[repDow]} del año (${dates.length} eventos)`
-          : `Creó "${title}" para ${names[member]}`,
-        fecha: serverTimestamp()
-      });
-
-      closeModal();
-      toast(isRepeat ? `✅ ${dates.length} eventos creados` : '✅ Guardado');
-    } catch (e) {
+    }).catch(e => {
       console.error('Error guardando:', e);
       setSS('error', '❌ Error');
       toast('❌ ' + e.message);
-    }
-  };
-
-  window.del = async key => {
-    if (!confirm('¿Eliminar?')) return;
-    try {
-      setSS('load', '⏳ Eliminando…');
-      await remove(ref(db, 'calendario/eventos/' + key));
-      await push(ref(db, 'registros/historial'), {
-        uid: currentUser.uid,
-        nombre: currentUser.displayName || '',
-        accion: 'eliminar_evento',
-        detalle: `Eliminó ${key}`,
-        fecha: serverTimestamp()
-      });
-      if (selectedDate) openDayPanel(selectedDate);
-      toast('🗑️ Eliminado');
-    } catch (e) {
-      console.error('Error eliminando:', e);
-      setSS('error', '❌ Error');
-      toast('❌ ' + e.message);
-    }
-  };
-
-  window.showFreeTime = function (member) {
-    const ic = member === 'mama' ? '👩' : member === 'papa' ? '👨' : member === 'hijo1' ? '🧒' : '👶';
-    const tn = new Date();
-    const mo = (tn.getDay() === 0 ? -6 : 1 - tn.getDay());
-    const lun = new Date(tn);
-    lun.setDate(tn.getDate() + mo);
-    const vie = new Date(lun);
-    vie.setDate(lun.getDate() + 4);
-    const fmt = d => d.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
-
-    const titleEl = document.getElementById('free-title');
-    if (titleEl) {
-      titleEl.innerHTML = `<span style="color:${colors[member]}">${ic} ${names[member]}</span> — Horarios libres<div style="font-size:12px;color:var(--muted);font-weight:600;margin-top:2px;">Semana del ${fmt(lun)} al ${fmt(vie)}</div>`;
-    }
-
-    let totalMin = 0, html = '';
-
-    const todayRef = new Date();
-    const todayDow = todayRef.getDay();
-    const mondayOffset = (todayDow === 0 ? -6 : 1 - todayDow);
-    const weekDates = {};
-
-    WORK_DAYS.forEach(d => {
-      const fd = new Date(todayRef);
-      fd.setDate(todayRef.getDate() + mondayOffset + (d - 1));
-      weekDates[d] = fd.toISOString().split('T')[0];
     });
+  });
+}
 
-    WORK_DAYS.forEach(dow => {
-      const thisDateStr = weekDates[dow];
-      const busy = [];
+function del(key) {
+  if (!confirm('¿Eliminar?')) return;
+  if (!db) return;
+  
+  setSS('load', '⏳ Eliminando…');
+  db.ref('calendario/eventos/' + key).remove().then(() => {
+    db.ref('registros/historial').push({
+      uid: currentUser.uid,
+      nombre: currentUser.displayName || '',
+      accion: 'eliminar_evento',
+      detalle: `Eliminó ${key}`,
+      fecha: firebase.database.ServerValue.TIMESTAMP
+    });
+    if (selectedDate) openDayPanel(selectedDate);
+    toast('🗑️ Eliminado');
+  }).catch(e => {
+    console.error('Error eliminando:', e);
+    setSS('error', '❌ Error');
+    toast('❌ ' + e.message);
+  });
+}
 
-      activities.forEach(a => {
-        if (parseInt(a.day) !== dow || !a.time) return;
-        if (a.fecha && a.fecha !== thisDateStr) return;
+function showFreeTime(member) {
+  const ic = member === 'mama' ? '👩' : member === 'papa' ? '👨' : member === 'hijo1' ? '🧒' : '👶';
+  const tn = new Date();
+  const mo = (tn.getDay() === 0 ? -6 : 1 - tn.getDay());
+  const lun = new Date(tn);
+  lun.setDate(tn.getDate() + mo);
+  const vie = new Date(lun);
+  vie.setDate(lun.getDate() + 4);
+  const fmt = d => d.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
 
-        const s = t2m(a.time);
-        const e = a.timeFin ? t2m(a.timeFin) : s + 60;
-        const own = a.member === member;
-        const kid = ['hijo1', 'hijo2'].includes(a.member);
-        const tras = kid && (a.traslado === member || a.traslado === 'ambos');
+  const titleEl = document.getElementById('free-title');
+  if (titleEl) {
+    titleEl.innerHTML = `<span style="color:${colors[member]}">${ic} ${names[member]}</span> — Horarios libres<div style="font-size:12px;color:var(--muted);font-weight:600;margin-top:2px;">Semana del ${fmt(lun)} al ${fmt(vie)}</div>`;
+  }
 
-        if (own || tras) {
-          busy.push({
-            start: Math.max(WORK_START, tras ? s - BUFFER : s),
-            end: Math.min(WORK_END, tras ? e + BUFFER : e),
-            label: a.title,
-            isKid: tras
-          });
-        }
-      });
+  let totalMin = 0, html = '';
 
-      busy.sort((a, b) => a.start - b.start);
-      const free = [];
-      let cur = WORK_START;
+  const todayRef = new Date();
+  const todayDow = todayRef.getDay();
+  const mondayOffset = (todayDow === 0 ? -6 : 1 - todayDow);
+  const weekDates = {};
 
-      busy.forEach(b => {
-        if (b.start > cur) free.push({ start: cur, end: b.start });
-        cur = Math.max(cur, b.end);
-      });
+  WORK_DAYS.forEach(d => {
+    const fd = new Date(todayRef);
+    fd.setDate(todayRef.getDate() + mondayOffset + (d - 1));
+    weekDates[d] = fd.toISOString().split('T')[0];
+  });
 
-      if (cur < WORK_END) free.push({ start: cur, end: WORK_END });
-      free.forEach(s => totalMin += s.end - s.start);
+  WORK_DAYS.forEach(dow => {
+    const thisDateStr = weekDates[dow];
+    const busy = [];
 
-      const isToday = dow === new Date().getDay();
-      html += `<div class="free-day-block"><div class="free-day-name${isToday ? ' today-day' : ''}">${DAYS[dow]}${isToday ? ' 📍' : ''}</div>`;
+    activities.forEach(a => {
+      if (parseInt(a.day) !== dow || !a.time) return;
+      if (a.fecha && a.fecha !== thisDateStr) return;
 
-      if (free.length === 0) {
-        html += `<div class="no-free">😓 Sin horarios libres</div>`;
-      } else {
-        free.forEach(s => {
-          const dur = s.end - s.start, h = Math.floor(dur / 60), m = dur % 60;
-          html += `<div class="free-slot">✅ ${m2t(s.start)} – ${m2t(s.end)} <span style="opacity:0.6;font-size:12px;margin-left:4px;">(${h > 0 ? h + 'h' : ''}${m > 0 ? ' ' + m + 'min' : ''})</span></div>`;
+      const s = t2m(a.time);
+      const e = a.timeFin ? t2m(a.timeFin) : s + 60;
+      const own = a.member === member;
+      const kid = ['hijo1', 'hijo2'].includes(a.member);
+      const tras = kid && (a.traslado === member || a.traslado === 'ambos');
+
+      if (own || tras) {
+        busy.push({
+          start: Math.max(WORK_START, tras ? s - BUFFER : s),
+          end: Math.min(WORK_END, tras ? e + BUFFER : e),
+          label: a.title,
+          isKid: tras
         });
       }
-
-      busy.forEach(b => {
-        html += `<div class="busy-slot">🔴 ${m2t(b.start)} – ${m2t(b.end)} · ${b.label}${b.isKid ? ' 🚗' : ''}</div>`;
-      });
-
-      html += `</div>`;
     });
 
-    const th = Math.floor(totalMin / 60), tm = totalMin % 60;
-    const contentEl = document.getElementById('free-content');
-    if (contentEl) {
-      contentEl.innerHTML = `<div class="free-summary"><span>${th}h ${tm > 0 ? tm + 'min' : ''}</span>disponibles Lun–Vie (07–22hs)</div>` + html;
+    busy.sort((a, b) => a.start - b.start);
+    const free = [];
+    let cur = WORK_START;
+
+    busy.forEach(b => {
+      if (b.start > cur) free.push({ start: cur, end: b.start });
+      cur = Math.max(cur, b.end);
+    });
+
+    if (cur < WORK_END) free.push({ start: cur, end: WORK_END });
+    free.forEach(s => totalMin += s.end - s.start);
+
+    const isToday = dow === new Date().getDay();
+    html += `<div class="free-day-block"><div class="free-day-name${isToday ? ' today-day' : ''}">${DAYS[dow]}${isToday ? ' 📍' : ''}</div>`;
+
+    if (free.length === 0) {
+      html += `<div class="no-free">😓 Sin horarios libres</div>`;
+    } else {
+      free.forEach(s => {
+        const dur = s.end - s.start, h = Math.floor(dur / 60), m = dur % 60;
+        html += `<div class="free-slot">✅ ${m2t(s.start)} – ${m2t(s.end)} <span style="opacity:0.6;font-size:12px;margin-left:4px;">(${h > 0 ? h + 'h' : ''}${m > 0 ? ' ' + m + 'min' : ''})</span></div>`;
+      });
     }
 
-    const panelEl = document.getElementById('free-panel');
-    if (panelEl) panelEl.classList.add('open');
-  };
+    busy.forEach(b => {
+      html += `<div class="busy-slot">🔴 ${m2t(b.start)} – ${m2t(b.end)} · ${b.label}${b.isKid ? ' 🚗' : ''}</div>`;
+    });
 
-  window.closeFreePanel = () => {
-    const panelEl = document.getElementById('free-panel');
-    if (panelEl) panelEl.classList.remove('open');
-  };
+    html += `</div>`;
+  });
 
-  window.openManage = function () {
-    const memberList = [
-      ['mama', '👩', 'Mamá'],
-      ['papa', '👨', 'Papá'],
-      ['hijo1', '🧒', 'Catalina'],
-      ['hijo2', '👶', 'Juan Martin']
-    ];
+  const th = Math.floor(totalMin / 60), tm = totalMin % 60;
+  const contentEl = document.getElementById('free-content');
+  if (contentEl) {
+    contentEl.innerHTML = `<div class="free-summary"><span>${th}h ${tm > 0 ? tm + 'min' : ''}</span>disponibles Lun–Vie (07–22hs)</div>` + html;
+  }
 
-    let html = '<p style="font-size:13px;color:var(--muted);font-weight:600;margin-bottom:16px;">Eliminá todos los eventos de un miembro o de toda la familia.</p>';
+  const panelEl = document.getElementById('free-panel');
+  if (panelEl) panelEl.classList.add('open');
+}
 
-    memberList.forEach(([key, icon, label]) => {
-      const count = activities.filter(a => a.member === key).length;
-      const c = colors[key];
-      html += `<div class="manage-row">
-        <div class="manage-row-left">
-          <div class="manage-row-icon">${icon}</div>
-          <div>
-            <div class="manage-row-name" style="color:${c}">${label}</div>
-            <div class="manage-row-count">${count} evento${count !== 1 ? 's' : ''}</div>
-          </div>
+function closeFreePanel() {
+  const panelEl = document.getElementById('free-panel');
+  if (panelEl) panelEl.classList.remove('open');
+}
+
+function openManage() {
+  const memberList = [
+    ['mama', '👩', 'Mamá'],
+    ['papa', '👨', 'Papá'],
+    ['hijo1', '🧒', 'Catalina'],
+    ['hijo2', '👶', 'Juan Martin']
+  ];
+
+  let html = '<p style="font-size:13px;color:var(--muted);font-weight:600;margin-bottom:16px;">Eliminá todos los eventos de un miembro o de toda la familia.</p>';
+
+  memberList.forEach(([key, icon, label]) => {
+    const count = activities.filter(a => a.member === key).length;
+    const c = colors[key];
+    html += `<div class="manage-row">
+      <div class="manage-row-left">
+        <div class="manage-row-icon">${icon}</div>
+        <div>
+          <div class="manage-row-name" style="color:${c}">${label}</div>
+          <div class="manage-row-count">${count} evento${count !== 1 ? 's' : ''}</div>
         </div>
-        ${count > 0
-          ? `<button class="manage-del-btn" onclick="deleteByMember('${key}','${label}')">Eliminar todos</button>`
-          : `<span style="font-size:12px;color:var(--muted);font-weight:700;">Sin eventos</span>`
-        }
-      </div>`;
+      </div>
+      ${count > 0
+        ? `<button class="manage-del-btn" onclick="deleteByMember('${key}','${label}')">Eliminar todos</button>`
+        : `<span style="font-size:12px;color:var(--muted);font-weight:700;">Sin eventos</span>`
+      }
+    </div>`;
+  });
+
+  const total = activities.length;
+  if (total > 0) {
+    html += `<hr class="manage-separator">
+    <button class="manage-del-all" onclick="deleteAll()">🗑️ Eliminar TODOS los eventos (${total})</button>`;
+  }
+
+  const contentEl = document.getElementById('manage-content');
+  if (contentEl) contentEl.innerHTML = html;
+
+  const panelEl = document.getElementById('manage-panel');
+  if (panelEl) panelEl.classList.add('open');
+}
+
+function closeManage() {
+  const panelEl = document.getElementById('manage-panel');
+  if (panelEl) panelEl.classList.remove('open');
+}
+
+function deleteByMember(member, label) {
+  if (!db) return;
+  
+  const evs = activities.filter(a => a.member === member);
+  if (!confirm(`¿Eliminar los ${evs.length} eventos de ${label}? Esta acción no se puede deshacer.`)) return;
+
+  setSS('load', '⏳ Eliminando…');
+  let deletedCount = 0;
+  
+  evs.forEach(a => {
+    db.ref('calendario/eventos/' + a._key).remove().then(() => {
+      deletedCount++;
+      if (deletedCount === evs.length) {
+        db.ref('registros/historial').push({
+          uid: currentUser.uid,
+          nombre: currentUser.displayName || '',
+          accion: 'eliminar_masivo',
+          detalle: `Eliminó todos los eventos de ${label} (${evs.length})`,
+          fecha: firebase.database.ServerValue.TIMESTAMP
+        });
+        toast(`🗑️ ${evs.length} eventos de ${label} eliminados`);
+        closeManage();
+        setTimeout(openManage, 400);
+      }
+    }).catch(e => {
+      console.error('Error:', e);
+      setSS('error', '❌ Error');
+      toast('❌ ' + e.message);
     });
+  });
+}
 
-    const total = activities.length;
-    if (total > 0) {
-      html += `<hr class="manage-separator">
-      <button class="manage-del-all" onclick="deleteAll()">🗑️ Eliminar TODOS los eventos (${total})</button>`;
-    }
+function deleteAll() {
+  if (!db) return;
+  
+  const total = activities.length;
+  if (!confirm(`¿Eliminar los ${total} eventos de toda la familia? Esta acción NO se puede deshacer.`)) return;
 
-    const contentEl = document.getElementById('manage-content');
-    if (contentEl) contentEl.innerHTML = html;
-
-    const panelEl = document.getElementById('manage-panel');
-    if (panelEl) panelEl.classList.add('open');
-  };
-
-  window.closeManage = () => {
-    const panelEl = document.getElementById('manage-panel');
-    if (panelEl) panelEl.classList.remove('open');
-  };
-
-  window.deleteByMember = async function (member, label) {
-    const evs = activities.filter(a => a.member === member);
-    if (!confirm(`¿Eliminar los ${evs.length} eventos de ${label}? Esta acción no se puede deshacer.`)) return;
-
-    try {
-      setSS('load', '⏳ Eliminando…');
-      for (const a of evs) await remove(ref(db, 'calendario/eventos/' + a._key));
-
-      await push(ref(db, 'registros/historial'), {
-        uid: currentUser.uid,
-        nombre: currentUser.displayName || '',
-        accion: 'eliminar_masivo',
-        detalle: `Eliminó todos los eventos de ${label} (${evs.length})`,
-        fecha: serverTimestamp()
-      });
-
-      toast(`🗑️ ${evs.length} eventos de ${label} eliminados`);
-      closeManage();
-      setTimeout(openManage, 400);
-    } catch (e) {
+  setSS('load', '⏳ Eliminando todo…');
+  let deletedCount = 0;
+  
+  activities.forEach(a => {
+    db.ref('calendario/eventos/' + a._key).remove().then(() => {
+      deletedCount++;
+      if (deletedCount === total) {
+        db.ref('registros/historial').push({
+          uid: currentUser.uid,
+          nombre: currentUser.displayName || '',
+          accion: 'eliminar_todo',
+          detalle: `Eliminó todos los eventos (${total})`,
+          fecha: firebase.database.ServerValue.TIMESTAMP
+        });
+        toast(`🗑️ ${total} eventos eliminados`);
+        closeManage();
+      }
+    }).catch(e => {
       console.error('Error:', e);
       setSS('error', '❌ Error');
       toast('❌ ' + e.message);
-    }
-  };
+    });
+  });
+}
 
-  window.deleteAll = async function () {
-    const total = activities.length;
-    if (!confirm(`¿Eliminar los ${total} eventos de toda la familia? Esta acción NO se puede deshacer.`)) return;
+// Asignar login al botón
+document.getElementById('btn-google').addEventListener('click', loginGoogle);
 
-    try {
-      setSS('load', '⏳ Eliminando todo…');
-      for (const a of activities) await remove(ref(db, 'calendario/eventos/' + a._key));
-
-      await push(ref(db, 'registros/historial'), {
-        uid: currentUser.uid,
-        nombre: currentUser.displayName || '',
-        accion: 'eliminar_todo',
-        detalle: `Eliminó todos los eventos (${total})`,
-        fecha: serverTimestamp()
-      });
-
-      toast(`🗑️ ${total} eventos eliminados`);
-      closeManage();
-    } catch (e) {
-      console.error('Error:', e);
-      setSS('error', '❌ Error');
-      toast('❌ ' + e.message);
-    }
-  };
-
-  console.log('Aplicación inicializada correctamente');
-});
+console.log('Script cargado correctamente');
 </script>
 </body>
 </html>
