@@ -1,334 +1,9 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<meta name="theme-color" content="#4f46e5">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Familia">
-<title>Calendario Familiar</title>
-<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-<style>
-  :root {
-    --primary: #4f46e5;
-    --mama: #ec4899; --papa: #3b82f6; --hijo1: #f59e0b; --hijo2: #10b981;
-    --bg: #f1f5f9; --text: #1e293b; --muted: #64748b; --border: #e2e8f0;
-    --radius: 16px; --shadow: 0 4px 20px rgba(0,0,0,0.08);
-  }
-  * { box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent; }
-  body { font-family:'Nunito',sans-serif; background:var(--bg); color:var(--text); overscroll-behavior:none; }
-
-  /* Loading */
-  #loading { position:fixed; inset:0; background:var(--primary); display:flex; flex-direction:column; align-items:center; justify-content:center; z-index:9999; gap:20px; transition:opacity 0.4s; }
-  #loading.hide { opacity:0; pointer-events:none; }
-  .loading-logo { font-size:56px; animation:bounce 1s infinite; }
-  @keyframes bounce { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-10px)} }
-  #loading p { color:rgba(255,255,255,0.85); font-size:15px; font-weight:600; }
-
-  /* Login */
-  #login-screen { display:none; position:fixed; inset:0; z-index:8000; background:linear-gradient(160deg,#4f46e5 0%,#7c3aed 50%,#a855f7 100%); flex-direction:column; align-items:center; justify-content:center; padding:40px 30px; text-align:center; }
-  #login-screen.show { display:flex; }
-  .login-emoji { font-size:72px; margin-bottom:20px; }
-  .login-title { font-size:32px; font-weight:900; color:white; margin-bottom:8px; }
-  .login-sub   { font-size:16px; color:rgba(255,255,255,0.8); margin-bottom:48px; font-weight:600; }
-  .google-btn  { display:flex; align-items:center; gap:12px; background:white; color:#1e293b; border:none; border-radius:50px; padding:16px 32px; font-size:16px; font-weight:700; cursor:pointer; font-family:'Nunito',sans-serif; box-shadow:0 8px 30px rgba(0,0,0,0.2); transition:transform 0.15s; }
-  .google-btn:active { transform:scale(0.97); }
-  .google-icon { width:22px; height:22px; }
-
-  /* Sync */
-  #sync-status { position:fixed; top:12px; right:12px; z-index:500; padding:5px 12px; border-radius:20px; font-size:11px; font-weight:700; transition:all 0.3s; }
-  .sync-ok    { background:#dcfce7; color:#166534; }
-  .sync-load  { background:#fef9c3; color:#854d0e; }
-  .sync-error { background:#fee2e2; color:#991b1b; }
-
-  /* App */
-  #app { max-width:500px; margin:0 auto; min-height:100vh; padding-bottom:80px; }
-
-  /* Header */
-  .header { background:linear-gradient(135deg,var(--primary),#7c3aed); color:white; padding:20px 20px 24px; position:relative; overflow:hidden; }
-  .header::before { content:''; position:absolute; top:-40px; right:-40px; width:160px; height:160px; border-radius:50%; background:rgba(255,255,255,0.07); }
-  .header-top  { display:flex; justify-content:space-between; align-items:flex-start; }
-  .header h1   { font-size:22px; font-weight:900; margin:0; position:relative; z-index:1; }
-  .header-date { font-size:13px; opacity:0.85; margin-top:4px; font-weight:600; position:relative; z-index:1; }
-  .user-avatar { width:40px; height:40px; border-radius:50%; border:2px solid rgba(255,255,255,0.5); cursor:pointer; object-fit:cover; position:relative; z-index:1; }
-  .user-avatar-ph { width:40px; height:40px; border-radius:50%; background:rgba(255,255,255,0.2); display:flex; align-items:center; justify-content:center; font-size:18px; cursor:pointer; border:2px solid rgba(255,255,255,0.4); position:relative; z-index:1; }
-
-  /* User menu */
-  #user-menu { display:none; position:fixed; top:70px; right:12px; background:white; border-radius:16px; padding:8px; box-shadow:0 8px 30px rgba(0,0,0,0.15); z-index:600; min-width:200px; }
-  #user-menu.open { display:block; }
-  .um-name  { padding:10px 14px 4px; font-size:13px; font-weight:700; color:var(--muted); }
-  .um-email { padding:0 14px 10px; font-size:12px; color:var(--muted); border-bottom:1px solid var(--border); margin-bottom:6px; }
-  .um-btn   { display:flex; align-items:center; gap:10px; width:100%; padding:10px 14px; border:none; background:none; font-family:'Nunito',sans-serif; font-size:14px; font-weight:700; color:#ef4444; cursor:pointer; border-radius:10px; transition:background 0.15s; }
-  .um-btn:hover { background:#fee2e2; }
-
-  /* Notif banner */
-  #notif-banner { display:none; background:#fffbeb; border-bottom:1px solid #fde68a; padding:12px 16px; align-items:center; gap:10px; }
-  #notif-banner.show { display:flex; }
-  #notif-banner p { font-size:13px; font-weight:700; color:#92400e; flex:1; }
-  .nb-allow   { background:#f59e0b; color:white; border:none; padding:7px 14px; border-radius:10px; font-size:12px; font-weight:800; cursor:pointer; font-family:'Nunito',sans-serif; }
-  .nb-dismiss { background:none; border:none; font-size:18px; cursor:pointer; color:#92400e; }
-
-  /* Member filters */
-  .member-filters { display:flex; gap:8px; padding:14px 16px; background:white; overflow-x:auto; border-bottom:1px solid var(--border); scrollbar-width:none; }
-  .member-filters::-webkit-scrollbar { display:none; }
-  .mf-wrap { display:flex; align-items:center; gap:4px; flex-shrink:0; }
-  .mf-btn  { padding:8px 14px; border-radius:20px; border:none; font-family:'Nunito',sans-serif; font-size:13px; font-weight:700; cursor:pointer; transition:all 0.2s; background:var(--bg); color:var(--muted); flex-shrink:0; }
-  .mf-btn.active { color:white; }
-  .mf-free { padding:7px 9px; border-radius:20px; border:none; background:#f0fdf4; color:#166534; font-size:13px; font-weight:800; cursor:pointer; }
-
-  /* Calendario */
-  .cal-nav { display:flex; align-items:center; justify-content:space-between; padding:14px 20px 8px; background:white; }
-  .cal-nav button { background:var(--bg); border:none; width:36px; height:36px; border-radius:50%; font-size:20px; cursor:pointer; display:flex; align-items:center; justify-content:center; font-weight:700; }
-  .cal-month { font-size:17px; font-weight:900; }
-  .cal-grid  { background:white; padding:0 12px 16px; }
-  .cal-weekdays { display:grid; grid-template-columns:repeat(7,1fr); text-align:center; margin-bottom:6px; }
-  .cal-wd   { font-size:10px; font-weight:800; color:var(--muted); padding:4px 0; text-transform:uppercase; }
-  .cal-days { display:grid; grid-template-columns:repeat(7,1fr); gap:3px; }
-  .cal-day  { border-radius:10px; display:flex; flex-direction:column; align-items:center; padding:5px 2px 4px; cursor:pointer; transition:background 0.15s; min-height:48px; }
-  .cal-day:hover { background:var(--bg); }
-  .cal-day.empty { cursor:default; pointer-events:none; }
-  .cal-day.today .cal-dn { background:var(--primary); color:white; width:24px; height:24px; border-radius:50%; display:flex; align-items:center; justify-content:center; }
-  .cal-day.selected { background:#ede9fe; }
-  .cal-dn { font-size:13px; font-weight:700; line-height:24px; }
-  .cal-day.other-month .cal-dn { color:#cbd5e1; }
-  .cal-badges { display:flex; flex-wrap:wrap; gap:2px; justify-content:center; margin-top:2px; max-width:40px; }
-  .cal-badge { font-size:9px; font-weight:900; color:white; padding:1px 5px; border-radius:8px; }
-
-  /* Leyenda */
-  .cal-legend { display:flex; gap:12px; padding:8px 16px 12px; background:white; justify-content:center; flex-wrap:wrap; }
-  .legend-item { display:flex; align-items:center; gap:4px; font-size:11px; font-weight:700; color:var(--muted); }
-  .legend-dot  { width:10px; height:10px; border-radius:50%; }
-
-  /* Panel día */
-  #day-panel { display:none; position:fixed; inset:0; background:rgba(15,23,42,0.6); z-index:700; align-items:flex-end; backdrop-filter:blur(4px); }
-  #day-panel.open { display:flex; }
-  .day-sheet { background:white; width:100%; border-radius:24px 24px 0 0; padding:24px 20px 40px; max-height:85vh; overflow-y:auto; animation:slideUp 0.25s ease; }
-  .day-sheet-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; }
-  .day-sheet-title  { font-size:18px; font-weight:900; }
-  .day-ev { background:var(--bg); padding:14px 16px; margin-bottom:10px; border-radius:var(--radius); border-left:4px solid; position:relative; animation:slideIn 0.2s ease; }
-  @keyframes slideIn { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
-  .day-ev-time  { font-size:12px; font-weight:800; color:var(--primary); margin-bottom:3px; }
-  .day-ev-title { font-size:15px; font-weight:800; margin-bottom:4px; }
-  .day-ev-meta  { font-size:12px; color:var(--muted); font-weight:600; }
-  .day-empty    { text-align:center; padding:40px 20px; color:var(--muted); }
-  .day-empty .ei { font-size:48px; margin-bottom:12px; }
-  .day-add-btn  { width:100%; padding:14px; border-radius:12px; border:none; font-size:14px; font-weight:800; font-family:'Nunito',sans-serif; background:var(--primary); color:white; cursor:pointer; margin-top:10px; }
-
-  /* FAB */
-  .fab { position:fixed; bottom:24px; right:20px; width:58px; height:58px; border-radius:50%; background:var(--primary); color:white; border:none; font-size:26px; box-shadow:0 6px 20px rgba(79,70,229,0.45); z-index:100; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:transform 0.15s; }
-  .fab:active { transform:scale(0.93); }
-
-  /* Modal form */
-  .modal-backdrop { display:none; position:fixed; inset:0; background:rgba(15,23,42,0.6); z-index:800; align-items:flex-end; backdrop-filter:blur(4px); }
-  .modal-backdrop.open { display:flex; }
-  .modal-sheet  { background:white; width:100%; border-radius:24px 24px 0 0; padding:24px 20px 40px; max-height:92vh; overflow-y:auto; animation:slideUp 0.25s ease; }
-  @keyframes slideUp { from{transform:translateY(100%)} to{transform:translateY(0)} }
-  .modal-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:22px; }
-  .modal-title  { font-size:20px; font-weight:900; }
-  .modal-close  { background:var(--bg); border:none; width:36px; height:36px; border-radius:50%; font-size:18px; cursor:pointer; display:flex; align-items:center; justify-content:center; font-weight:700; }
-  .field { margin-bottom:16px; }
-  .field label { display:block; font-size:11px; font-weight:800; color:var(--muted); text-transform:uppercase; letter-spacing:0.8px; margin-bottom:6px; }
-  .field input, .field select { width:100%; padding:13px 16px; border:2px solid var(--border); border-radius:12px; font-size:15px; font-family:'Nunito',sans-serif; font-weight:600; color:var(--text); outline:none; transition:border-color 0.2s; background:white; }
-  .field input:focus, .field select:focus { border-color:var(--primary); }
-  .time-row { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
-  .modal-actions { display:flex; gap:10px; margin-top:22px; }
-  .btn-cancel { flex:1; padding:14px; border-radius:12px; border:none; font-size:15px; font-weight:700; font-family:'Nunito',sans-serif; background:var(--bg); color:var(--muted); cursor:pointer; }
-  .btn-save   { flex:2; padding:14px; border-radius:12px; border:none; font-size:15px; font-weight:800; font-family:'Nunito',sans-serif; background:var(--primary); color:white; cursor:pointer; box-shadow:0 4px 14px rgba(79,70,229,0.35); }
-
-  /* Panel horarios libres */
-  #free-panel { display:none; position:fixed; inset:0; background:rgba(15,23,42,0.6); z-index:900; align-items:flex-end; backdrop-filter:blur(4px); }
-  #free-panel.open { display:flex; }
-  .free-sheet  { background:white; width:100%; border-radius:24px 24px 0 0; padding:24px 20px 40px; max-height:88vh; overflow-y:auto; animation:slideUp 0.25s ease; }
-  .free-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; }
-  .free-title  { font-size:20px; font-weight:900; }
-  .free-summary { background:linear-gradient(135deg,var(--primary),#7c3aed); color:white; border-radius:14px; padding:14px 16px; margin-bottom:20px; font-size:14px; font-weight:700; }
-  .free-summary span { font-size:24px; font-weight:900; display:block; margin-bottom:2px; }
-  .free-day-block { margin-bottom:18px; }
-  .free-day-name  { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:1px; color:var(--muted); margin-bottom:8px; }
-  .free-day-name.today-day { color:var(--primary); }
-  .free-slot { display:flex; align-items:center; gap:8px; background:#f0fdf4; border:1.5px solid #86efac; border-radius:10px; padding:10px 14px; margin-bottom:6px; font-size:14px; font-weight:700; color:#166534; }
-  .busy-slot { display:flex; align-items:center; gap:8px; background:#fef2f2; border:1.5px solid #fca5a5; border-radius:10px; padding:8px 14px; margin-bottom:6px; font-size:12px; font-weight:600; color:#991b1b; opacity:0.75; }
-  .no-free   { background:#fef9c3; border:1.5px solid #fde047; border-radius:10px; padding:10px 14px; font-size:13px; font-weight:700; color:#854d0e; }
-
-  /* Del btn */
-  .del-btn { position:absolute; top:10px; right:10px; background:#fee2e2; color:#ef4444; border:none; width:28px; height:28px; border-radius:50%; font-size:14px; cursor:pointer; display:flex; align-items:center; justify-content:center; font-weight:700; }
-
-  /* Panel gestión */
-  #manage-panel { display:none; position:fixed; inset:0; background:rgba(15,23,42,0.6); z-index:900; align-items:flex-end; backdrop-filter:blur(4px); }
-  #manage-panel.open { display:flex; }
-  .manage-sheet { background:white; width:100%; border-radius:24px 24px 0 0; padding:24px 20px 40px; max-height:80vh; overflow-y:auto; animation:slideUp 0.25s ease; }
-  .manage-row {
-    display:flex; align-items:center; justify-content:space-between;
-    padding:14px 16px; border-radius:14px; background:var(--bg);
-    margin-bottom:10px;
-  }
-  .manage-row-left { display:flex; align-items:center; gap:12px; }
-  .manage-row-icon { font-size:22px; }
-  .manage-row-name { font-size:15px; font-weight:800; }
-  .manage-row-count { font-size:12px; color:var(--muted); font-weight:600; margin-top:2px; }
-  .manage-del-btn {
-    padding:8px 16px; border-radius:10px; border:none;
-    background:#fee2e2; color:#ef4444; font-size:13px; font-weight:800;
-    cursor:pointer; font-family:'Nunito',sans-serif; transition:background 0.15s;
-  }
-  .manage-del-btn:hover { background:#fecaca; }
-  .manage-del-all {
-    width:100%; padding:14px; border-radius:12px; border:none;
-    font-size:14px; font-weight:800; font-family:'Nunito',sans-serif;
-    background:#fee2e2; color:#ef4444; cursor:pointer; margin-top:6px;
-  }
-  .manage-separator { border:none; border-top:1px solid var(--border); margin:16px 0; }
-
-  /* Toast */
-  #toast { position:fixed; bottom:100px; left:50%; transform:translateX(-50%); background:#1e293b; color:white; padding:10px 20px; border-radius:20px; font-size:13px; font-weight:700; z-index:9000; opacity:0; transition:opacity 0.3s; pointer-events:none; white-space:nowrap; }
-  #toast.show { opacity:1; }
-</style>
-</head>
-<body>
-
-<div id="loading"><div class="loading-logo">📅</div><p>Cargando Calendario Familiar…</p></div>
-
-<div id="login-screen">
-  <div class="login-emoji">📅</div>
-  <div class="login-title">Calendario Familiar</div>
-  <div class="login-sub">Organizate junto a tu familia</div>
-  <button class="google-btn" onclick="loginGoogle()">
-    <svg class="google-icon" viewBox="0 0 48 48">
-      <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
-      <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
-      <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
-      <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.31-8.16 2.31-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
-    </svg>
-    Continuar con Google
-  </button>
-</div>
-
-<div id="user-menu">
-  <div class="um-name"  id="um-name"></div>
-  <div class="um-email" id="um-email"></div>
-  <button class="um-btn" style="color:#6366f1;" onclick="closeUserMenu();openManage()">🗂️ Gestionar eventos</button>
-  <button class="um-btn" onclick="logout()">🚪 Cerrar sesión</button>
-</div>
-
-<div id="sync-status" class="sync-load">⏳ Conectando…</div>
-
-<div id="notif-banner">
-  <p>🔔 Activá notificaciones para recordatorios 30 min antes</p>
-  <button class="nb-allow"   onclick="requestNotifPermission()">Activar</button>
-  <button class="nb-dismiss" onclick="dismissNotifBanner()">×</button>
-</div>
-
-<div id="app"></div>
-
-<!-- Panel día -->
-<div id="day-panel" onclick="if(event.target==this)closeDayPanel()">
-  <div class="day-sheet">
-    <div class="day-sheet-header">
-      <span class="day-sheet-title" id="day-panel-title"></span>
-      <button class="modal-close" onclick="closeDayPanel()">×</button>
-    </div>
-    <div id="day-panel-content"></div>
-  </div>
-</div>
-
-<!-- Panel horarios libres -->
-<div id="free-panel" onclick="if(event.target==this)closeFreePanel()">
-  <div class="free-sheet">
-    <div class="free-header">
-      <span class="free-title" id="free-title"></span>
-      <button class="modal-close" onclick="closeFreePanel()">×</button>
-    </div>
-    <div id="free-content"></div>
-  </div>
-</div>
-
-<!-- Modal evento -->
-<div id="modal" class="modal-backdrop" onclick="if(event.target==this)closeModal()">
-  <div class="modal-sheet">
-    <div class="modal-header">
-      <span class="modal-title">Nueva Actividad</span>
-      <button class="modal-close" onclick="closeModal()">×</button>
-    </div>
-    <div class="field">
-      <label>Para</label>
-      <select id="m" onchange="onMemberChange()">
-        <option value="mama">👩 Mamá</option>
-        <option value="papa">👨 Papá</option>
-        <option value="hijo1">🧒 Catalina</option>
-        <option value="hijo2">👶 Juan Martin</option>
-      </select>
-    </div>
-    <div class="field">
-      <label>Actividad</label>
-      <input type="text" id="t" placeholder="Ej: Clase de pádel">
-    </div>
-    <div class="field">
-      <label>Día</label>
-      <select id="d">
-        <option value="1">Lunes</option><option value="2">Martes</option>
-        <option value="3">Miércoles</option><option value="4">Jueves</option>
-        <option value="5">Viernes</option><option value="6">Sábado</option>
-        <option value="0">Domingo</option>
-      </select>
-    </div>
-    <div class="field">
-      <label>Horario</label>
-      <div class="time-row">
-        <input type="time" id="ti" placeholder="Inicio">
-        <input type="time" id="tf" placeholder="Fin">
-      </div>
-    </div>
-    <div class="field">
-      <label>Lugar (opcional)</label>
-      <input type="text" id="l" placeholder="Ej: Club Deportivo">
-    </div>
-    <div class="field">
-      <label>Repetir</label>
-      <select id="rep">
-        <option value="none">No repetir</option>
-        <option value="1">Todos los lunes del año</option>
-        <option value="2">Todos los martes del año</option>
-        <option value="3">Todos los miércoles del año</option>
-        <option value="4">Todos los jueves del año</option>
-        <option value="5">Todos los viernes del año</option>
-        <option value="6">Todos los sábados del año</option>
-        <option value="0">Todos los domingos del año</option>
-      </select>
-    </div>
-    <div class="field" id="traslado-field" style="display:none;">
-      <label>¿Quién lleva/busca?</label>
-      <select id="traslado">
-        <option value="none">Nadie (van solos)</option>
-        <option value="mama">👩 Mamá</option>
-        <option value="papa">👨 Papá</option>
-        <option value="ambos">👩👨 Ambos</option>
-      </select>
-    </div>
-    <div class="modal-actions">
-      <button class="btn-cancel" onclick="closeModal()">Cancelar</button>
-      <button class="btn-save"   onclick="save()">✓ Guardar</button>
-    </div>
-  </div>
-</div>
-
-<!-- Panel gestión de eventos -->
-<div id="manage-panel" onclick="if(event.target==this)closeManage()">
-  <div class="manage-sheet">
-    <div class="modal-header">
-      <span class="modal-title">🗂️ Gestionar eventos</span>
-      <button class="modal-close" onclick="closeManage()">×</button>
-    </div>
-    <div id="manage-content"></div>
-  </div>
-</div>
-
-<div id="toast"></div>
+<!-- REEMPLAZA la sección del script type="module" con esto: -->
 
 <script type="module">
 import { initializeApp }   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getDatabase, ref, onValue, push, remove, serverTimestamp, set } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
-import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged, signInWithRedirect, getRedirectResult } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDQH7D54SyerTRa8Y8BXFDFB5cAJkA8p2Q",
@@ -343,6 +18,13 @@ const fbApp = initializeApp(firebaseConfig);
 const db    = getDatabase(fbApp);
 const auth  = getAuth(fbApp);
 const prov  = new GoogleAuthProvider();
+
+// IMPORTANTE: Agregar scopes necesarios
+prov.addScope('https://www.googleapis.com/auth/userinfo.email');
+prov.addScope('https://www.googleapis.com/auth/userinfo.profile');
+prov.setCustomParameters({
+  prompt: 'select_account'  // Forzar selección de cuenta
+});
 
 const names  = { mama:'Mamá', papa:'Papá', hijo1:'Catalina', hijo2:'Juan Martin' };
 const MONTHS = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
@@ -359,6 +41,9 @@ let calYear      = new Date().getFullYear();
 let calMonth     = new Date().getMonth();
 let selectedDate = null;
 
+// Detectar si es móvil (donde popup suele fallar)
+const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
 // ── Helpers ───────────────────────────────────────────────────
 function setSS(s,m){ const e=document.getElementById('sync-status'); e.className='sync-'+s; e.textContent=m; }
 function toast(m){ const e=document.getElementById('toast'); e.textContent=m; e.classList.add('show'); setTimeout(()=>e.classList.remove('show'),2500); }
@@ -367,7 +52,58 @@ function t2m(t){ if(!t)return null; const[h,m]=t.split(':').map(Number); return 
 function m2t(m){ return `${String(Math.floor(m/60)).padStart(2,'0')}:${String(m%60).padStart(2,'0')}`; }
 
 // ── Auth ──────────────────────────────────────────────────────
-window.loginGoogle = async()=>{ try{ await signInWithPopup(auth,prov); }catch(e){ toast('❌ Error al iniciar sesión'); } };
+window.loginGoogle = async () => {
+  try {
+    setSS('load', '⏳ Conectando con Google...');
+    
+    if (isMobile) {
+      // En móvil usar redirect en lugar de popup
+      await signInWithRedirect(auth, prov);
+    } else {
+      // En desktop usar popup
+      await signInWithPopup(auth, prov);
+    }
+  } catch(e) {
+    console.error('Error login:', e);
+    let msg = '❌ Error al iniciar sesión';
+    
+    // Mensajes específicos según el error
+    if (e.code === 'auth/popup-blocked') {
+      msg = '❌ El navegador bloqueó el popup. Intenta con redirect...';
+      // Fallback a redirect
+      try {
+        await signInWithRedirect(auth, prov);
+        return;
+      } catch(e2) {
+        msg = '❌ Error en redirect: ' + e2.message;
+      }
+    } else if (e.code === 'auth/cancelled-popup-request') {
+      msg = '⚠️ Operación cancelada';
+    } else if (e.code === 'auth/unauthorized-domain') {
+      msg = '❌ Dominio no autorizado en Firebase';
+    } else if (e.code === 'auth/invalid-credential') {
+      msg = '❌ Credencial inválida. Verifica configuración OAuth en Google Cloud Console';
+    } else if (e.message && e.message.includes('requested action is invalid')) {
+      msg = '❌ Acción inválida. Intenta recargar la página o usar modo incógnito';
+    }
+    
+    toast(msg);
+    setSS('error', '❌ Error de login');
+  }
+};
+
+// Manejar resultado de redirect (cuando vuelve de Google)
+if (isMobile) {
+  getRedirectResult(auth).then((result) => {
+    if (result) {
+      console.log('Login por redirect exitoso');
+    }
+  }).catch((error) => {
+    console.error('Error en redirect:', error);
+    toast('❌ Error al volver de Google: ' + error.message);
+  });
+}
+
 window.logout = async()=>{
   closeUserMenu();
   await signOut(auth);
@@ -827,5 +563,3 @@ window.deleteAll = async function(){
   }catch(e){ setSS('error','❌ Error'); toast('❌ '+e.message); }
 };
 </script>
-</body>
-</html>
