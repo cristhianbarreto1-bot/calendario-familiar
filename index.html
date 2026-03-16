@@ -290,6 +290,58 @@
     background: none; border: none; font-size: 18px;
     cursor: pointer; color: #92400e; padding: 0 4px;
   }
+
+  /* ── Panel horarios libres ── */
+  #free-panel {
+    display: none; position: fixed; inset: 0;
+    background: rgba(15,23,42,0.6); z-index: 800;
+    align-items: flex-end; backdrop-filter: blur(4px);
+  }
+  #free-panel.open { display: flex; }
+  .free-sheet {
+    background: white; width: 100%;
+    border-radius: 24px 24px 0 0;
+    padding: 24px 20px 40px;
+    max-height: 88vh; overflow-y: auto;
+    animation: slideUp 0.25s ease;
+  }
+  .free-header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 20px;
+  }
+  .free-title { font-size: 20px; font-weight: 900; }
+  .free-day-block { margin-bottom: 18px; }
+  .free-day-name {
+    font-size: 12px; font-weight: 800; text-transform: uppercase;
+    letter-spacing: 1px; color: var(--muted); margin-bottom: 8px;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .free-day-name.today-day { color: var(--primary); }
+  .free-slot {
+    display: flex; align-items: center; gap: 10px;
+    background: #f0fdf4; border: 1.5px solid #86efac;
+    border-radius: 10px; padding: 10px 14px;
+    margin-bottom: 6px; font-size: 14px; font-weight: 700; color: #166534;
+  }
+  .free-slot .slot-icon { font-size: 16px; }
+  .busy-slot {
+    display: flex; align-items: center; gap: 10px;
+    background: #fef2f2; border: 1.5px solid #fca5a5;
+    border-radius: 10px; padding: 8px 14px;
+    margin-bottom: 6px; font-size: 13px; font-weight: 600; color: #991b1b;
+    opacity: 0.75;
+  }
+  .no-free {
+    background: #fef9c3; border: 1.5px solid #fde047;
+    border-radius: 10px; padding: 10px 14px;
+    font-size: 13px; font-weight: 700; color: #854d0e;
+  }
+  .free-summary {
+    background: linear-gradient(135deg, var(--primary), #7c3aed);
+    color: white; border-radius: 14px; padding: 14px 16px;
+    margin-bottom: 20px; font-size: 14px; font-weight: 700;
+  }
+  .free-summary span { font-size: 22px; font-weight: 900; display: block; margin-bottom: 2px; }
 </style>
 </head>
 <body>
@@ -336,6 +388,17 @@
 <!-- App -->
 <div id="app"></div>
 
+<!-- Panel horarios libres -->
+<div id="free-panel" onclick="if(event.target==this)closeFreePanel()">
+  <div class="free-sheet">
+    <div class="free-header">
+      <span class="free-title" id="free-title">Horarios libres</span>
+      <button class="modal-close" onclick="closeFreePanel()">×</button>
+    </div>
+    <div id="free-content"></div>
+  </div>
+</div>
+
 <!-- Toast -->
 <div id="toast"></div>
 
@@ -378,6 +441,25 @@
     <div class="field">
       <label>Lugar (opcional)</label>
       <input type="text" id="l" placeholder="Ej: Club Deportivo">
+    </div>
+    <div class="field">
+      <label>Repetir</label>
+      <select id="rep">
+        <option value="none">No repetir</option>
+        <option value="weekly">Cada semana (por 4 semanas)</option>
+        <option value="weekly8">Cada semana (por 8 semanas)</option>
+        <option value="weekly12">Cada semana (por 12 semanas)</option>
+        <option value="weekly52">Cada semana (todo el año)</option>
+      </select>
+    </div>
+    <div class="field" id="traslado-field" style="display:none;">
+      <label>¿Quién lleva/busca?</label>
+      <select id="traslado">
+        <option value="none">Nadie (van solos)</option>
+        <option value="mama">👩 Mamá</option>
+        <option value="papa">👨 Papá</option>
+        <option value="ambos">👩👨 Ambos</option>
+      </select>
     </div>
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeModal()">Cancelar</button>
@@ -583,9 +665,20 @@ window.render = function() {
   ];
   btns.forEach(([key, label, icon]) => {
     const active = current === key;
-    html += `<button class="filter-btn${active?' active':''}"
-      style="${active?'background:'+colors[key]:''}"
-      onclick="filter('${key}')">${icon}${label}</button>`;
+    const showFreeBtn = ['mama','papa','hijo1','hijo2'].includes(key);
+    if (showFreeBtn) {
+      html += `<div style="display:flex;align-items:center;gap:4px;flex-shrink:0;">
+        <button class="filter-btn${active?' active':''}"
+          style="${active?'background:'+colors[key]:''}"
+          onclick="filter('${key}')">${icon}${label}</button>
+        <button onclick="showFreeTime('${key}')" title="Ver horarios libres"
+          style="padding:8px 10px;border-radius:20px;border:none;background:#f0fdf4;color:#166534;font-size:13px;font-weight:800;cursor:pointer;flex-shrink:0;" >🕐</button>
+      </div>`;
+    } else {
+      html += `<button class="filter-btn${active?' active':''}"
+        style="${active?'background:'+colors[key]:''}"
+        onclick="filter('${key}')">${icon}${label}</button>`;
+    }
   });
   html += `</div><div class="list">`;
 
@@ -613,6 +706,8 @@ window.render = function() {
           <div class="event-title">${a.title}</div>
           <div class="event-owner-badge" style="color:${color}">${icon} ${names[a.member]||a.member}</div>
           ${a.location?`<div class="event-location">📍 ${a.location}</div>`:''}
+          ${a.esRepetido?`<div style="font-size:11px;color:var(--muted);margin-top:4px;font-weight:700;">🔁 Semana ${a.semana} de ${a.totalSemanas}</div>`:''}
+          ${a.traslado && a.traslado!=='none'?`<div style="font-size:11px;color:#92400e;margin-top:3px;font-weight:700;">🚗 Lleva: ${a.traslado==='ambos'?'Mamá y Papá':names[a.traslado]}</div>`:''}
           ${canDelete?`<button class="del-btn" onclick="del('${a._key}')">×</button>`:''}
         </div>`;
       });
@@ -638,6 +733,163 @@ document.addEventListener('click', e => {
 });
 
 // ── CRUD ──────────────────────────────────────────────────────
+// ── Mostrar/ocultar campo traslado según miembro ─────────────
+document.getElementById('m').addEventListener('change', function() {
+  const isKid = ['hijo1','hijo2'].includes(this.value);
+  document.getElementById('traslado-field').style.display = isKid ? 'block' : 'none';
+  if (!isKid) document.getElementById('traslado').value = 'none';
+});
+
+// ── Horarios libres ───────────────────────────────────────────
+const WORK_START = 7 * 60;   // 07:00 en minutos
+const WORK_END   = 22 * 60;  // 22:00 en minutos
+const BUFFER     = 15;       // minutos de traslado
+const WORK_DAYS  = [1,2,3,4,5]; // lunes a viernes
+const dayNames   = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+
+function timeToMin(t) {
+  if (!t) return null;
+  const [h, m] = t.split(':').map(Number);
+  return h * 60 + m;
+}
+
+function minToTime(m) {
+  const h = Math.floor(m / 60);
+  const min = m % 60;
+  return `${String(h).padStart(2,'0')}:${String(min).padStart(2,'0')}`;
+}
+
+function getFreeSlots(member) {
+  // Para cada día laboral, calcular bloques ocupados y libres
+  const result = {};
+
+  WORK_DAYS.forEach(dayNum => {
+    // Recopilar todos los eventos bloqueantes para este miembro en este día
+    const busyBlocks = [];
+
+    activities.forEach(a => {
+      if (parseInt(a.day) !== dayNum) return;
+      const start = timeToMin(a.time);
+      if (start === null) return;
+
+      // Duración por defecto: 60 min si no hay hora fin
+      const duration = a.duration || 60;
+      const end = start + duration;
+
+      // ¿Este evento bloquea al miembro?
+      const isOwn = a.member === member;
+
+      // Para papá/mamá: también bloquea si tiene que llevar a un hijo
+      const isKidEvent = ['hijo1','hijo2'].includes(a.member);
+      const trasladoAfecta = isKidEvent && (
+        a.traslado === member ||
+        a.traslado === 'ambos'
+      );
+
+      if (isOwn || trasladoAfecta) {
+        const bufferStart = isKidEvent && trasladoAfecta ? start - BUFFER : start;
+        const bufferEnd   = isKidEvent && trasladoAfecta ? end   + BUFFER : end;
+        busyBlocks.push({
+          start: Math.max(WORK_START, bufferStart),
+          end:   Math.min(WORK_END,   bufferEnd),
+          label: a.title,
+          isKid: isKidEvent && trasladoAfecta
+        });
+      }
+    });
+
+    // Ordenar bloques ocupados
+    busyBlocks.sort((a,b) => a.start - b.start);
+
+    // Calcular slots libres
+    const freeSlots = [];
+    let cursor = WORK_START;
+
+    busyBlocks.forEach(b => {
+      if (b.start > cursor) {
+        freeSlots.push({ start: cursor, end: b.start });
+      }
+      cursor = Math.max(cursor, b.end);
+    });
+
+    if (cursor < WORK_END) {
+      freeSlots.push({ start: cursor, end: WORK_END });
+    }
+
+    result[dayNum] = { freeSlots, busyBlocks };
+  });
+
+  return result;
+}
+
+window.showFreeTime = function(member) {
+  const icon  = member==='mama'?'👩':member==='papa'?'👨':member==='hijo1'?'🧒':'👶';
+  const color = colors[member];
+  const slotsData = getFreeSlots(member);
+
+  document.getElementById('free-title').innerHTML =
+    `<span style="color:${color}">${icon} ${names[member]}</span> — Horarios libres`;
+
+  // Calcular total de horas libres
+  let totalMin = 0;
+  Object.values(slotsData).forEach(d => {
+    d.freeSlots.forEach(s => totalMin += (s.end - s.start));
+  });
+  const totalHrs = Math.floor(totalMin / 60);
+  const totalMins = totalMin % 60;
+
+  let html = `<div class="free-summary">
+    <span>${totalHrs}h ${totalMins > 0 ? totalMins + 'min' : ''}</span>
+    disponibles esta semana (Lun–Vie, 07–22hs)
+  </div>`;
+
+  const todayDay = new Date().getDay();
+
+  WORK_DAYS.forEach(dayNum => {
+    const { freeSlots, busyBlocks } = slotsData[dayNum];
+    const isToday = dayNum === todayDay;
+
+    html += `<div class="free-day-block">
+      <div class="free-day-name${isToday?' today-day':''}">
+        ${dayNames[dayNum]}${isToday?' 📍':''}
+      </div>`;
+
+    if (freeSlots.length === 0) {
+      html += `<div class="no-free">😓 Sin horarios libres este día</div>`;
+    } else {
+      freeSlots.forEach(s => {
+        const dur = s.end - s.start;
+        const hrs = Math.floor(dur/60);
+        const mins = dur % 60;
+        const durText = hrs > 0 ? `${hrs}h${mins>0?' '+mins+'min':''}` : `${mins}min`;
+        html += `<div class="free-slot">
+          <span class="slot-icon">✅</span>
+          <span>${minToTime(s.start)} – ${minToTime(s.end)} <span style="opacity:0.6;font-size:12px;">(${durText})</span></span>
+        </div>`;
+      });
+    }
+
+    // Mostrar ocupados como referencia
+    if (busyBlocks.length > 0) {
+      busyBlocks.forEach(b => {
+        html += `<div class="busy-slot">
+          <span>🔴</span>
+          <span>${minToTime(b.start)} – ${minToTime(b.end)} · ${b.label}${b.isKid?' 🚗':''}</span>
+        </div>`;
+      });
+    }
+
+    html += `</div>`;
+  });
+
+  document.getElementById('free-content').innerHTML = html;
+  document.getElementById('free-panel').classList.add('open');
+};
+
+window.closeFreePanel = function() {
+  document.getElementById('free-panel').classList.remove('open');
+};
+
 window.filter = function(f) { current = f; render(); };
 
 window.add = function() {
@@ -648,34 +900,70 @@ window.add = function() {
 window.closeModal = function() {
   document.getElementById('modal').classList.remove('open');
   ['t','ti','l'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('rep').value = 'none';
+  document.getElementById('traslado').value = 'none';
+  document.getElementById('traslado-field').style.display = 'none';
 };
 
 window.save = async function() {
-  const title = document.getElementById('t').value.trim();
-  const time  = document.getElementById('ti').value;
+  const title   = document.getElementById('t').value.trim();
+  const time    = document.getElementById('ti').value;
+  const rep     = document.getElementById('rep').value;
   if (!title || !time) { showToast('⚠️ Ingresá título y hora'); return; }
 
-  const evento = {
-    member:    document.getElementById('m').value,
-    title, day: parseInt(document.getElementById('d').value),
-    time,  location: document.getElementById('l').value.trim(),
-    creadoPor: currentUser.uid,
-    creadoPorNombre: currentUser.displayName || '',
-    creadoEn: serverTimestamp()
-  };
+  const member   = document.getElementById('m').value;
+  const day      = parseInt(document.getElementById('d').value);
+  const location = document.getElementById('l').value.trim();
+
+  // Calcular cuántas semanas repetir
+  const weeksMap = { none:1, weekly:4, weekly8:8, weekly12:12, weekly52:52 };
+  const weeks    = weeksMap[rep] || 1;
+
+  // Generar fecha base: próximo día de la semana elegido
+  function getNextDate(targetDay) {
+    const today = new Date();
+    const diff  = (targetDay - today.getDay() + 7) % 7;
+    const d     = new Date(today);
+    d.setDate(today.getDate() + (diff === 0 ? 0 : diff));
+    d.setHours(0,0,0,0);
+    return d;
+  }
 
   try {
     setSyncStatus('load', '⏳ Guardando…');
-    await push(ref(db, 'calendario/eventos'), evento);
+    const baseDate = getNextDate(day);
+    const groupId  = rep !== 'none' ? `group_${Date.now()}` : null;
+
+    for (let i = 0; i < weeks; i++) {
+      const fecha = new Date(baseDate);
+      fecha.setDate(baseDate.getDate() + i * 7);
+
+      const traslado = document.getElementById('traslado').value;
+      const evento = {
+        member, title, day,
+        time, location,
+        traslado: ['hijo1','hijo2'].includes(member) ? traslado : 'none',
+        fecha: fecha.toISOString().split('T')[0], // YYYY-MM-DD
+        creadoPor: currentUser.uid,
+        creadoPorNombre: currentUser.displayName || '',
+        creadoEn: serverTimestamp(),
+        ...(groupId && { groupId, esRepetido: true, semana: i + 1, totalSemanas: weeks })
+      };
+      await push(ref(db, 'calendario/eventos'), evento);
+    }
+
     await push(ref(db, 'registros/historial'), {
       uid: currentUser.uid,
       nombre: currentUser.displayName || '',
       accion: 'crear_evento',
-      detalle: `Creó "${title}" para ${names[evento.member]}`,
+      detalle: rep === 'none'
+        ? `Creó "${title}" para ${names[member]}`
+        : `Creó "${title}" para ${names[member]} (${weeks} semanas)`,
       fecha: serverTimestamp()
     });
+
     closeModal();
-    showToast('✅ Actividad guardada');
+    showToast(rep === 'none' ? '✅ Actividad guardada' : `✅ ${weeks} eventos creados`);
   } catch(e) {
     setSyncStatus('error', '❌ Error al guardar');
     showToast('❌ Error: ' + e.message);
