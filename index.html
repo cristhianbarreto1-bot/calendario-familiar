@@ -2,89 +2,352 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="theme-color" content="#6366f1">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#4f46e5">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Familia">
 <title>Calendario Familiar</title>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #f8fafc; }
-
-  #sync-status {
-    position: fixed;
-    top: 10px;
-    right: 10px;
-    z-index: 9999;
-    padding: 6px 12px;
-    border-radius: 20px;
-    font-size: 12px;
-    font-weight: 600;
-    transition: all 0.3s;
+  :root {
+    --primary: #4f46e5;
+    --primary-light: #818cf8;
+    --primary-dark: #3730a3;
+    --mama: #ec4899;
+    --papa: #3b82f6;
+    --hijo1: #f59e0b;
+    --hijo2: #10b981;
+    --bg: #f1f5f9;
+    --card: #ffffff;
+    --text: #1e293b;
+    --muted: #64748b;
+    --border: #e2e8f0;
+    --radius: 16px;
+    --shadow: 0 4px 20px rgba(0,0,0,0.08);
   }
-  .sync-ok    { background: #d1fae5; color: #065f46; }
-  .sync-load  { background: #fef3c7; color: #92400e; }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  body { font-family: 'Nunito', sans-serif; background: var(--bg); color: var(--text); overscroll-behavior: none; }
+
+  /* ── Loading ── */
+  #loading {
+    position: fixed; inset: 0; background: var(--primary);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    z-index: 9999; gap: 20px; transition: opacity 0.4s;
+  }
+  #loading.hide { opacity: 0; pointer-events: none; }
+  .loading-logo { font-size: 56px; animation: bounce 1s infinite; }
+  @keyframes bounce { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-10px)} }
+  #loading p { color: rgba(255,255,255,0.85); font-size: 15px; font-weight: 600; }
+
+  /* ── Login screen ── */
+  #login-screen {
+    display: none;
+    position: fixed; inset: 0; z-index: 8000;
+    background: linear-gradient(160deg, #4f46e5 0%, #7c3aed 50%, #a855f7 100%);
+    flex-direction: column; align-items: center; justify-content: center;
+    padding: 40px 30px; text-align: center;
+  }
+  #login-screen.show { display: flex; }
+  .login-emoji { font-size: 72px; margin-bottom: 20px; filter: drop-shadow(0 4px 12px rgba(0,0,0,0.2)); }
+  .login-title { font-size: 32px; font-weight: 900; color: white; margin-bottom: 8px; }
+  .login-sub { font-size: 16px; color: rgba(255,255,255,0.8); margin-bottom: 48px; font-weight: 600; }
+  .google-btn {
+    display: flex; align-items: center; gap: 12px;
+    background: white; color: #1e293b;
+    border: none; border-radius: 50px;
+    padding: 16px 32px; font-size: 16px; font-weight: 700;
+    cursor: pointer; font-family: 'Nunito', sans-serif;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.2);
+    transition: transform 0.15s, box-shadow 0.15s;
+  }
+  .google-btn:active { transform: scale(0.97); box-shadow: 0 4px 15px rgba(0,0,0,0.15); }
+  .google-icon { width: 22px; height: 22px; }
+
+  /* ── Sync status ── */
+  #sync-status {
+    position: fixed; top: 12px; right: 12px; z-index: 500;
+    padding: 5px 12px; border-radius: 20px;
+    font-size: 11px; font-weight: 700;
+    transition: all 0.3s; letter-spacing: 0.3px;
+  }
+  .sync-ok    { background: #dcfce7; color: #166534; }
+  .sync-load  { background: #fef9c3; color: #854d0e; }
   .sync-error { background: #fee2e2; color: #991b1b; }
 
-  #loading {
-    position: fixed; inset: 0; background: #f8fafc;
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
-    z-index: 9000; gap: 15px;
-  }
-  .spinner {
-    width: 40px; height: 40px;
-    border: 4px solid #e5e7eb;
-    border-top-color: #6366f1;
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-  }
-  @keyframes spin { to { transform: rotate(360deg); } }
+  /* ── App shell ── */
+  #app { max-width: 500px; margin: 0 auto; min-height: 100vh; }
 
-  /* Modal backdrop */
-  #modal {
-    display: none;
-    position: fixed; top:0; left:0; width:100%; height:100%;
-    background: rgba(0,0,0,0.5);
-    z-index: 200;
-    align-items: flex-end;
+  /* ── Header ── */
+  .header {
+    background: linear-gradient(135deg, var(--primary), #7c3aed);
+    color: white; padding: 20px 20px 28px;
+    position: relative; overflow: hidden;
   }
-  #modal.open { display: flex; }
+  .header::before {
+    content: ''; position: absolute; top: -40px; right: -40px;
+    width: 160px; height: 160px; border-radius: 50%;
+    background: rgba(255,255,255,0.07);
+  }
+  .header::after {
+    content: ''; position: absolute; bottom: -20px; left: 30px;
+    width: 100px; height: 100px; border-radius: 50%;
+    background: rgba(255,255,255,0.05);
+  }
+  .header-top { display: flex; justify-content: space-between; align-items: flex-start; }
+  .header h1 { font-size: 22px; font-weight: 900; margin: 0; position: relative; z-index: 1; }
+  .header-date { font-size: 13px; opacity: 0.85; margin-top: 4px; font-weight: 600; position: relative; z-index: 1; }
+  .user-avatar {
+    width: 40px; height: 40px; border-radius: 50%;
+    border: 2px solid rgba(255,255,255,0.5);
+    cursor: pointer; object-fit: cover;
+    position: relative; z-index: 1;
+  }
+  .user-avatar-placeholder {
+    width: 40px; height: 40px; border-radius: 50%;
+    background: rgba(255,255,255,0.2);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; cursor: pointer;
+    border: 2px solid rgba(255,255,255,0.4);
+    position: relative; z-index: 1;
+  }
 
-  input, select {
-    width: 100%;
-    padding: 14px;
-    border: 2px solid #e5e7eb;
-    border-radius: 10px;
-    font-size: 16px;
-    outline: none;
-    transition: border-color 0.2s;
+  /* ── User menu ── */
+  #user-menu {
+    display: none; position: fixed; top: 70px; right: 12px;
+    background: white; border-radius: 16px; padding: 8px;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.15); z-index: 600;
+    min-width: 200px;
   }
-  input:focus, select:focus { border-color: #6366f1; }
+  #user-menu.open { display: block; }
+  .user-menu-name { padding: 10px 14px 6px; font-size: 13px; font-weight: 700; color: var(--muted); }
+  .user-menu-email { padding: 0 14px 10px; font-size: 12px; color: var(--muted); border-bottom: 1px solid var(--border); margin-bottom: 6px; }
+  .user-menu-btn {
+    display: flex; align-items: center; gap: 10px;
+    width: 100%; padding: 10px 14px; border: none; background: none;
+    font-family: 'Nunito', sans-serif; font-size: 14px; font-weight: 700;
+    color: #ef4444; cursor: pointer; border-radius: 10px;
+    transition: background 0.15s;
+  }
+  .user-menu-btn:hover { background: #fee2e2; }
+
+  /* ── Filter tabs ── */
+  .filters {
+    display: flex; gap: 8px; padding: 14px 16px;
+    background: white; overflow-x: auto;
+    border-bottom: 1px solid var(--border);
+    scrollbar-width: none;
+  }
+  .filters::-webkit-scrollbar { display: none; }
+  .filter-btn {
+    padding: 8px 16px; border-radius: 20px; border: none;
+    font-family: 'Nunito', sans-serif; font-size: 13px; font-weight: 700;
+    flex-shrink: 0; cursor: pointer; transition: all 0.2s;
+    background: var(--bg); color: var(--muted);
+  }
+  .filter-btn.active { color: white; transform: scale(1.03); }
+
+  /* ── List area ── */
+  .list { padding: 16px; }
+  .empty-state { text-align: center; padding: 60px 20px; color: var(--muted); }
+  .empty-state .empty-icon { font-size: 64px; margin-bottom: 16px; }
+  .empty-state p { font-size: 15px; font-weight: 600; }
+  .empty-state span { font-size: 13px; opacity: 0.7; }
+
+  .day-label {
+    font-size: 11px; font-weight: 800; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 1px;
+    margin: 18px 0 10px; display: flex; align-items: center; gap: 8px;
+  }
+  .day-label.today { color: var(--primary); }
+  .today-pill {
+    background: var(--primary); color: white;
+    padding: 2px 8px; border-radius: 10px; font-size: 10px;
+  }
+
+  .event-card {
+    background: white; padding: 14px 16px;
+    margin-bottom: 10px; border-radius: var(--radius);
+    border-left: 4px solid; position: relative;
+    box-shadow: var(--shadow); transition: transform 0.15s;
+    animation: slideIn 0.2s ease;
+  }
+  @keyframes slideIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+  .event-card:active { transform: scale(0.99); }
+  .event-time { font-size: 12px; font-weight: 800; color: var(--primary); margin-bottom: 4px; }
+  .event-title { font-size: 16px; font-weight: 800; margin-bottom: 4px; }
+  .event-meta { font-size: 12px; color: var(--muted); font-weight: 600; }
+  .event-location { font-size: 12px; color: var(--muted); margin-top: 4px; font-weight: 600; }
+  .event-owner-badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    background: var(--bg); padding: 3px 8px; border-radius: 10px;
+    font-size: 11px; font-weight: 700; margin-top: 6px;
+  }
+  .del-btn {
+    position: absolute; top: 10px; right: 10px;
+    background: #fee2e2; color: #ef4444;
+    border: none; width: 28px; height: 28px;
+    border-radius: 50%; font-size: 14px;
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    font-weight: 700; transition: background 0.15s;
+  }
+  .del-btn:hover { background: #fecaca; }
+
+  /* ── FAB ── */
+  .fab {
+    position: fixed; bottom: 24px; right: 20px;
+    width: 58px; height: 58px; border-radius: 50%;
+    background: var(--primary); color: white;
+    border: none; font-size: 26px;
+    box-shadow: 0 6px 20px rgba(79,70,229,0.45);
+    z-index: 100; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: transform 0.15s, box-shadow 0.15s;
+  }
+  .fab:active { transform: scale(0.93); box-shadow: 0 3px 10px rgba(79,70,229,0.3); }
+
+  /* ── Modal ── */
+  .modal-backdrop {
+    display: none; position: fixed; inset: 0;
+    background: rgba(15,23,42,0.6); z-index: 700;
+    align-items: flex-end; backdrop-filter: blur(4px);
+  }
+  .modal-backdrop.open { display: flex; }
+  .modal-sheet {
+    background: white; width: 100%;
+    border-radius: 24px 24px 0 0;
+    padding: 24px 20px 40px;
+    max-height: 92vh; overflow-y: auto;
+    animation: slideUp 0.25s ease;
+  }
+  @keyframes slideUp { from{transform:translateY(100%)} to{transform:translateY(0)} }
+  .modal-header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 22px;
+  }
+  .modal-title { font-size: 20px; font-weight: 900; }
+  .modal-close {
+    background: var(--bg); border: none; width: 36px; height: 36px;
+    border-radius: 50%; font-size: 18px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; font-weight: 700;
+  }
+  .field { margin-bottom: 16px; }
+  .field label {
+    display: block; font-size: 11px; font-weight: 800;
+    color: var(--muted); text-transform: uppercase;
+    letter-spacing: 0.8px; margin-bottom: 6px;
+  }
+  .field input, .field select {
+    width: 100%; padding: 13px 16px;
+    border: 2px solid var(--border); border-radius: 12px;
+    font-size: 15px; font-family: 'Nunito', sans-serif;
+    font-weight: 600; color: var(--text);
+    outline: none; transition: border-color 0.2s;
+    background: white;
+  }
+  .field input:focus, .field select:focus { border-color: var(--primary); }
+  .modal-actions { display: flex; gap: 10px; margin-top: 22px; }
+  .btn-cancel {
+    flex: 1; padding: 14px; border-radius: 12px; border: none;
+    font-size: 15px; font-weight: 700; font-family: 'Nunito', sans-serif;
+    background: var(--bg); color: var(--muted); cursor: pointer;
+  }
+  .btn-save {
+    flex: 2; padding: 14px; border-radius: 12px; border: none;
+    font-size: 15px; font-weight: 800; font-family: 'Nunito', sans-serif;
+    background: var(--primary); color: white; cursor: pointer;
+    box-shadow: 0 4px 14px rgba(79,70,229,0.35);
+    transition: transform 0.15s;
+  }
+  .btn-save:active { transform: scale(0.97); }
+
+  /* ── Toast ── */
+  #toast {
+    position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%);
+    background: #1e293b; color: white; padding: 10px 20px;
+    border-radius: 20px; font-size: 13px; font-weight: 700;
+    z-index: 9000; opacity: 0; transition: opacity 0.3s;
+    pointer-events: none; white-space: nowrap;
+  }
+  #toast.show { opacity: 1; }
+
+  /* ── Notif permission banner ── */
+  #notif-banner {
+    display: none; background: #fffbeb;
+    border-bottom: 1px solid #fde68a;
+    padding: 12px 16px;
+    align-items: center; gap: 10px;
+  }
+  #notif-banner.show { display: flex; }
+  #notif-banner p { font-size: 13px; font-weight: 700; color: #92400e; flex: 1; }
+  .notif-allow {
+    background: #f59e0b; color: white; border: none;
+    padding: 7px 14px; border-radius: 10px;
+    font-size: 12px; font-weight: 800; cursor: pointer;
+    font-family: 'Nunito', sans-serif;
+  }
+  .notif-dismiss {
+    background: none; border: none; font-size: 18px;
+    cursor: pointer; color: #92400e; padding: 0 4px;
+  }
 </style>
 </head>
 <body>
 
-<!-- Loading overlay -->
+<!-- Loading -->
 <div id="loading">
-  <div class="spinner"></div>
-  <div style="color:#6b7280;font-size:14px;">Conectando con Firebase…</div>
+  <div class="loading-logo">📅</div>
+  <p>Cargando Calendario Familiar…</p>
 </div>
 
-<!-- Sync indicator -->
+<!-- Login -->
+<div id="login-screen">
+  <div class="login-emoji">📅</div>
+  <div class="login-title">Calendario Familiar</div>
+  <div class="login-sub">Organizate junto a tu familia</div>
+  <button class="google-btn" onclick="loginGoogle()">
+    <svg class="google-icon" viewBox="0 0 48 48">
+      <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+      <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+      <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+      <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.31-8.16 2.31-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+    </svg>
+    Continuar con Google
+  </button>
+</div>
+
+<!-- User menu -->
+<div id="user-menu">
+  <div class="user-menu-name" id="um-name"></div>
+  <div class="user-menu-email" id="um-email"></div>
+  <button class="user-menu-btn" onclick="logout()">🚪 Cerrar sesión</button>
+</div>
+
+<!-- Sync status -->
 <div id="sync-status" class="sync-load">⏳ Conectando…</div>
 
+<!-- Notification banner -->
+<div id="notif-banner">
+  <p>🔔 Activá notificaciones para recordatorios 30 min antes</p>
+  <button class="notif-allow" onclick="requestNotifPermission()">Activar</button>
+  <button class="notif-dismiss" onclick="dismissNotifBanner()">×</button>
+</div>
+
+<!-- App -->
 <div id="app"></div>
 
-<!-- Modal -->
-<div id="modal" onclick="if(event.target==this)closeModal()">
-  <div style="background:white;width:100%;border-radius:20px 20px 0 0;padding:25px;max-height:90vh;overflow-y:auto;">
-    <div style="font-size:20px;font-weight:700;margin-bottom:20px;display:flex;justify-content:space-between;">
-      <span id="modal-title">Nueva Actividad</span>
-      <button onclick="closeModal()" style="background:#f3f4f6;border:none;width:36px;height:36px;border-radius:50%;font-size:20px;cursor:pointer;">×</button>
-    </div>
+<!-- Toast -->
+<div id="toast"></div>
 
-    <div style="margin-bottom:15px;">
-      <label style="display:block;font-size:13px;font-weight:600;color:#6b7280;margin-bottom:5px;text-transform:uppercase;">Para</label>
+<!-- Add modal -->
+<div id="modal" class="modal-backdrop" onclick="if(event.target==this)closeModal()">
+  <div class="modal-sheet">
+    <div class="modal-header">
+      <span class="modal-title">Nueva Actividad</span>
+      <button class="modal-close" onclick="closeModal()">×</button>
+    </div>
+    <div class="field">
+      <label>Para</label>
       <select id="m">
         <option value="mama">👩 Mamá</option>
         <option value="papa">👨 Papá</option>
@@ -92,14 +355,12 @@
         <option value="hijo2">👶 Juan Martin</option>
       </select>
     </div>
-
-    <div style="margin-bottom:15px;">
-      <label style="display:block;font-size:13px;font-weight:600;color:#6b7280;margin-bottom:5px;text-transform:uppercase;">Actividad</label>
+    <div class="field">
+      <label>Actividad</label>
       <input type="text" id="t" placeholder="Ej: Clase de fútbol">
     </div>
-
-    <div style="margin-bottom:15px;">
-      <label style="display:block;font-size:13px;font-weight:600;color:#6b7280;margin-bottom:5px;text-transform:uppercase;">Día</label>
+    <div class="field">
+      <label>Día</label>
       <select id="d">
         <option value="1">Lunes</option>
         <option value="2">Martes</option>
@@ -110,231 +371,335 @@
         <option value="0">Domingo</option>
       </select>
     </div>
-
-    <div style="margin-bottom:15px;">
-      <label style="display:block;font-size:13px;font-weight:600;color:#6b7280;margin-bottom:5px;text-transform:uppercase;">Hora</label>
+    <div class="field">
+      <label>Hora</label>
       <input type="time" id="ti">
     </div>
-
-    <div style="margin-bottom:15px;">
-      <label style="display:block;font-size:13px;font-weight:600;color:#6b7280;margin-bottom:5px;text-transform:uppercase;">Lugar (opcional)</label>
+    <div class="field">
+      <label>Lugar (opcional)</label>
       <input type="text" id="l" placeholder="Ej: Club Deportivo">
     </div>
-
-    <div style="display:flex;gap:10px;margin-top:20px;">
-      <button onclick="closeModal()" style="flex:1;padding:15px;border-radius:10px;border:none;font-size:16px;font-weight:600;background:#f3f4f6;color:#6b7280;cursor:pointer;">Cancelar</button>
-      <button onclick="save()" style="flex:1;padding:15px;border-radius:10px;border:none;font-size:16px;font-weight:600;background:#6366f1;color:white;cursor:pointer;">Guardar</button>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal()">Cancelar</button>
+      <button class="btn-save" onclick="save()">✓ Guardar</button>
     </div>
   </div>
 </div>
 
-<!-- Firebase SDK -->
 <script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-  import { getDatabase, ref, onValue, push, remove, serverTimestamp, set }
-    from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
-  import { getAuth, signInAnonymously, onAuthStateChanged }
-    from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import { initializeApp }
+  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getDatabase, ref, onValue, push, remove, serverTimestamp, set }
+  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged }
+  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
-  // ── Firebase config ──────────────────────────────────────────
-  const firebaseConfig = {
-    apiKey: "AIzaSyDQH7D54SyerTRa8Y8BXFDFB5cAJkA8p2Q",
-    authDomain: "calendariofamiliar-edeb3.firebaseapp.com",
-    projectId: "calendariofamiliar-edeb3",
-    storageBucket: "calendariofamiliar-edeb3.firebasestorage.app",
-    messagingSenderId: "251743449792",
-    appId: "1:251743449792:web:7dfa1ac95b35648edff325",
-    databaseURL: "https://calendariofamiliar-edeb3-default-rtdb.firebaseio.com"
-  };
+// ── Config ────────────────────────────────────────────────────
+const firebaseConfig = {
+  apiKey: "AIzaSyDQH7D54SyerTRa8Y8BXFDFB5cAJkA8p2Q",
+  authDomain: "calendariofamiliar-edeb3.firebaseapp.com",
+  projectId: "calendariofamiliar-edeb3",
+  storageBucket: "calendariofamiliar-edeb3.firebasestorage.app",
+  messagingSenderId: "251743449792",
+  appId: "1:251743449792:web:7dfa1ac95b35648edff325",
+  databaseURL: "https://calendariofamiliar-edeb3-default-rtdb.firebaseio.com"
+};
 
-  const fbApp  = initializeApp(firebaseConfig);
-  const db     = getDatabase(fbApp);
-  const auth   = getAuth(fbApp);
+const fbApp    = initializeApp(firebaseConfig);
+const db       = getDatabase(fbApp);
+const auth     = getAuth(fbApp);
+const provider = new GoogleAuthProvider();
 
-  // ── State ─────────────────────────────────────────────────────
-  const names  = { mama:'Mamá', papa:'Papá', hijo1:'Catalina', hijo2:'Juan Martin' };
-  const days   = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
-  let activities = [];
-  let current    = 'all';
-  let currentUid = null;
+// ── State ─────────────────────────────────────────────────────
+const names = { mama:'Mamá', papa:'Papá', hijo1:'Catalina', hijo2:'Juan Martin' };
+const days  = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+const colors = { all:'#4f46e5', mama:'#ec4899', papa:'#3b82f6', hijo1:'#f59e0b', hijo2:'#10b981' };
+let activities  = [];
+let current     = 'all';
+let currentUser = null;
+let notifTimer  = null;
 
-  // ── Sync indicator ────────────────────────────────────────────
-  function setSyncStatus(state, msg) {
-    const el = document.getElementById('sync-status');
-    el.className = 'sync-' + state;
-    el.textContent = msg;
+// ── Helpers ───────────────────────────────────────────────────
+function setSyncStatus(state, msg) {
+  const el = document.getElementById('sync-status');
+  el.className = 'sync-' + state;
+  el.textContent = msg;
+}
+
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 2500);
+}
+
+function hideLoading() {
+  const el = document.getElementById('loading');
+  el.classList.add('hide');
+  setTimeout(() => el.style.display = 'none', 400);
+}
+
+// ── Auth ──────────────────────────────────────────────────────
+window.loginGoogle = async function() {
+  try {
+    await signInWithPopup(auth, provider);
+  } catch(e) {
+    showToast('❌ Error al iniciar sesión');
+    console.error(e);
+  }
+};
+
+window.logout = async function() {
+  closeUserMenu();
+  await signOut(auth);
+  activities = [];
+  document.getElementById('app').innerHTML = '';
+  document.getElementById('login-screen').classList.add('show');
+  showToast('👋 Sesión cerrada');
+};
+
+onAuthStateChanged(auth, async user => {
+  if (!user) {
+    hideLoading();
+    document.getElementById('login-screen').classList.add('show');
+    return;
   }
 
-  // ── Auth anónima ──────────────────────────────────────────────
-  signInAnonymously(auth).catch(e => {
-    setSyncStatus('error', '❌ Error de auth');
-    console.error(e);
+  currentUser = user;
+  document.getElementById('login-screen').classList.remove('show');
+  document.getElementById('um-name').textContent  = user.displayName || 'Usuario';
+  document.getElementById('um-email').textContent = user.email || '';
+
+  // Guardar/actualizar perfil en Firebase
+  await set(ref(db, 'usuarios/' + user.uid), {
+    uid: user.uid,
+    nombre: user.displayName || '',
+    email: user.email || '',
+    fotoURL: user.photoURL || '',
+    ultimaConexion: serverTimestamp()
   });
 
-  onAuthStateChanged(auth, user => {
-    if (!user) return;
-    currentUid = user.uid;
+  // Escuchar eventos en tiempo real
+  onValue(ref(db, 'calendario/eventos'), snapshot => {
+    activities = [];
+    const data = snapshot.val();
+    if (data) {
+      Object.entries(data).forEach(([key, val]) => {
+        activities.push({ ...val, _key: key });
+      });
+    }
+    hideLoading();
+    setSyncStatus('ok', '✅ Sincronizado');
+    render();
+    scheduleNotifications();
+  }, err => {
+    setSyncStatus('error', '❌ Sin conexión');
+    hideLoading();
+    console.error(err);
+  });
 
-    // Registrar sesión en /usuarios/{uid}
-    const userRef = ref(db, 'usuarios/' + user.uid);
-    set(userRef, {
-      uid: user.uid,
-      tipo: 'anonimo',
-      ultimaConexion: serverTimestamp()
-    });
+  // Mostrar banner de notificaciones si no están habilitadas
+  if ('Notification' in window && Notification.permission === 'default') {
+    document.getElementById('notif-banner').classList.add('show');
+  }
+});
 
-    // Escuchar eventos del calendario (tiempo real)
-    const evRef = ref(db, 'calendario/eventos');
-    onValue(evRef, snapshot => {
-      activities = [];
-      const data = snapshot.val();
-      if (data) {
-        Object.entries(data).forEach(([key, val]) => {
-          activities.push({ ...val, _key: key });
-        });
+// ── Notifications ─────────────────────────────────────────────
+window.requestNotifPermission = async function() {
+  const perm = await Notification.requestPermission();
+  document.getElementById('notif-banner').classList.remove('show');
+  if (perm === 'granted') {
+    showToast('🔔 Notificaciones activadas');
+    scheduleNotifications();
+  } else {
+    showToast('🔕 Notificaciones desactivadas');
+  }
+};
+
+window.dismissNotifBanner = function() {
+  document.getElementById('notif-banner').classList.remove('show');
+};
+
+function scheduleNotifications() {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  if (notifTimer) clearInterval(notifTimer);
+
+  function checkEvents() {
+    const now = new Date();
+    const todayDay = now.getDay();
+    const nowMinutes = now.getHours() * 60 + now.getMinutes();
+
+    activities.forEach(a => {
+      if (parseInt(a.day) !== todayDay) return;
+      if (!a.time) return;
+      const [h, m] = a.time.split(':').map(Number);
+      const eventMinutes = h * 60 + m;
+      const diff = eventMinutes - nowMinutes;
+      // Notificar si faltan entre 29 y 31 minutos (ventana de 2 min para no repetir)
+      if (diff >= 29 && diff <= 31) {
+        const notifKey = `notif_${a._key}_${now.toDateString()}`;
+        if (!sessionStorage.getItem(notifKey)) {
+          sessionStorage.setItem(notifKey, '1');
+          new Notification('📅 Recordatorio familiar', {
+            body: `${names[a.member] || a.member}: "${a.title}" en 30 minutos${a.location ? ' · ' + a.location : ''}`,
+            icon: '/favicon.ico',
+            badge: '/favicon.ico'
+          });
+        }
       }
-      document.getElementById('loading').style.display = 'none';
-      setSyncStatus('ok', '✅ Sincronizado');
-      render();
-    }, err => {
-      setSyncStatus('error', '❌ Sin conexión');
-      console.error(err);
     });
+  }
+
+  checkEvents();
+  notifTimer = setInterval(checkEvents, 60000); // chequea cada minuto
+}
+
+// ── Render ────────────────────────────────────────────────────
+window.render = function() {
+  const appEl = document.getElementById('app');
+
+  const avatarHtml = currentUser?.photoURL
+    ? `<img src="${currentUser.photoURL}" class="user-avatar" onclick="toggleUserMenu()" referrerpolicy="no-referrer">`
+    : `<div class="user-avatar-placeholder" onclick="toggleUserMenu()">👤</div>`;
+
+  let html = `
+    <div class="header">
+      <div class="header-top">
+        <div>
+          <h1>📅 Calendario Familiar</h1>
+          <div class="header-date">${new Date().toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long'})}</div>
+        </div>
+        ${avatarHtml}
+      </div>
+    </div>
+    <div class="filters">`;
+
+  const btns = [
+    ['all','Todos',''],
+    ['mama',names.mama,'👩 '],
+    ['papa',names.papa,'👨 '],
+    ['hijo1',names.hijo1,'🧒 '],
+    ['hijo2',names.hijo2,'👶 '],
+  ];
+  btns.forEach(([key, label, icon]) => {
+    const active = current === key;
+    html += `<button class="filter-btn${active?' active':''}"
+      style="${active?'background:'+colors[key]:''}"
+      onclick="filter('${key}')">${icon}${label}</button>`;
   });
+  html += `</div><div class="list">`;
 
-  // ── Render ────────────────────────────────────────────────────
-  window.render = function() {
-    const app = document.getElementById('app');
-    let html = '<div style="max-width:500px;margin:0 auto;background:#f8fafc;min-height:100vh;">';
+  const filtered = current === 'all' ? activities : activities.filter(a => a.member === current);
+  filtered.sort((a,b) => a.day !== b.day ? a.day - b.day : (a.time||'').localeCompare(b.time||''));
 
-    // Header
-    html += '<div style="background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white;padding:20px;">';
-    html += '<h1 style="font-size:24px;margin:0;">📅 Calendario Familiar</h1>';
-    html += '<div style="font-size:14px;opacity:0.9;margin-top:5px;">'
-          + new Date().toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long'})
-          + '</div></div>';
-
-    // Filtros
-    const colors = { all:'#6366f1', mama:'#ec4899', papa:'#3b82f6', hijo1:'#f59e0b', hijo2:'#10b981' };
-    html += '<div style="display:flex;gap:8px;padding:15px;background:white;overflow-x:auto;">';
-    const btns = [
-      ['all','Todos',''],
-      ['mama',names.mama,'👩 '],
-      ['papa',names.papa,'👨 '],
-      ['hijo1',names.hijo1,'🧒 '],
-      ['hijo2',names.hijo2,'👶 '],
-    ];
-    btns.forEach(([key, label, icon]) => {
-      const active = current === key;
-      const bg = active ? colors[key]+';color:white' : '#f3f4f6;color:#374151';
-      html += `<button onclick="filter('${key}')" style="padding:10px 15px;border-radius:20px;border:none;background:${bg};font-weight:600;flex-shrink:0;cursor:pointer;">${icon}${label}</button>`;
+  if (filtered.length === 0) {
+    html += `<div class="empty-state">
+      <div class="empty-icon">📅</div>
+      <p>No hay actividades</p>
+      <span>Tocá + para agregar una</span>
+    </div>`;
+  } else {
+    const byDay = {};
+    filtered.forEach(a => { if (!byDay[a.day]) byDay[a.day]=[]; byDay[a.day].push(a); });
+    Object.keys(byDay).sort().forEach(d => {
+      const isToday = parseInt(d) === new Date().getDay();
+      html += `<div class="day-label${isToday?' today':''}">${days[d]}${isToday?'<span class="today-pill">Hoy</span>':''}</div>`;
+      byDay[d].forEach(a => {
+        const color = colors[a.member] || '#4f46e5';
+        const icon  = a.member==='mama'?'👩':a.member==='papa'?'👨':a.member==='hijo1'?'🧒':'👶';
+        const canDelete = currentUser && (a.creadoPor === currentUser.uid);
+        html += `<div class="event-card" style="border-left-color:${color}">
+          <div class="event-time">${a.time||''}</div>
+          <div class="event-title">${a.title}</div>
+          <div class="event-owner-badge" style="color:${color}">${icon} ${names[a.member]||a.member}</div>
+          ${a.location?`<div class="event-location">📍 ${a.location}</div>`:''}
+          ${canDelete?`<button class="del-btn" onclick="del('${a._key}')">×</button>`:''}
+        </div>`;
+      });
     });
-    html += '</div>';
+  }
 
-    // Lista
-    html += '<div style="padding:20px;">';
-    const filtered = current === 'all' ? activities : activities.filter(a => a.member === current);
-    filtered.sort((a,b) => a.day !== b.day ? a.day - b.day : (a.time||'').localeCompare(b.time||''));
+  html += `</div><button class="fab" onclick="add()">+</button>`;
+  appEl.innerHTML = html;
+};
 
-    if (filtered.length === 0) {
-      html += '<div style="text-align:center;padding:50px;color:#9ca3af;"><div style="font-size:60px;margin-bottom:15px;">📅</div>No hay actividades<br><span style="font-size:14px;">Toca + para agregar</span></div>';
-    } else {
-      const byDay = {};
-      filtered.forEach(a => { if (!byDay[a.day]) byDay[a.day]=[]; byDay[a.day].push(a); });
-      Object.keys(byDay).sort().forEach(d => {
-        const isToday = parseInt(d) === new Date().getDay();
-        html += `<div style="font-size:12px;font-weight:700;color:#6b7280;text-transform:uppercase;margin:15px 0 10px;">${days[d]}${isToday?' (Hoy)':''}</div>`;
-        byDay[d].forEach(a => {
-          const color = colors[a.member] || '#6366f1';
-          const icon  = a.member==='mama'?'👩':a.member==='papa'?'👨':a.member==='hijo1'?'🧒':'👶';
-          html += `<div style="background:white;padding:15px;margin-bottom:10px;border-radius:12px;border-left:4px solid ${color};position:relative;box-shadow:0 2px 8px rgba(0,0,0,0.05);">`;
-          html += `<div style="font-weight:700;color:#6366f1;font-size:14px;">${a.time||''}</div>`;
-          html += `<div style="font-size:16px;font-weight:600;margin:5px 0;">${a.title}</div>`;
-          html += `<div style="font-size:12px;color:#6b7280;">${icon} ${names[a.member]||a.member}</div>`;
-          if (a.location) html += `<div style="font-size:12px;color:#666;margin-top:5px;">📍 ${a.location}</div>`;
-          html += `<button onclick="del('${a._key}')" style="position:absolute;top:10px;right:10px;background:#fee2e2;color:#ef4444;border:none;width:30px;height:30px;border-radius:50%;font-size:16px;cursor:pointer;">×</button>`;
-          html += `</div>`;
-        });
-      });
-    }
-    html += '</div>';
+// ── User menu ─────────────────────────────────────────────────
+window.toggleUserMenu = function() {
+  document.getElementById('user-menu').classList.toggle('open');
+};
+window.closeUserMenu = function() {
+  document.getElementById('user-menu').classList.remove('open');
+};
+document.addEventListener('click', e => {
+  const menu = document.getElementById('user-menu');
+  if (menu.classList.contains('open') && !menu.contains(e.target) && !e.target.closest('.user-avatar, .user-avatar-placeholder')) {
+    closeUserMenu();
+  }
+});
 
-    // FAB
-    html += '<button onclick="add()" style="position:fixed;bottom:20px;right:20px;width:60px;height:60px;border-radius:50%;background:#6366f1;color:white;border:none;font-size:24px;box-shadow:0 4px 15px rgba(0,0,0,0.3);z-index:100;cursor:pointer;">+</button>';
-    html += '</div>';
-    app.innerHTML = html;
+// ── CRUD ──────────────────────────────────────────────────────
+window.filter = function(f) { current = f; render(); };
+
+window.add = function() {
+  document.getElementById('d').value = new Date().getDay() || 1;
+  document.getElementById('modal').classList.add('open');
+};
+
+window.closeModal = function() {
+  document.getElementById('modal').classList.remove('open');
+  ['t','ti','l'].forEach(id => document.getElementById(id).value = '');
+};
+
+window.save = async function() {
+  const title = document.getElementById('t').value.trim();
+  const time  = document.getElementById('ti').value;
+  if (!title || !time) { showToast('⚠️ Ingresá título y hora'); return; }
+
+  const evento = {
+    member:    document.getElementById('m').value,
+    title, day: parseInt(document.getElementById('d').value),
+    time,  location: document.getElementById('l').value.trim(),
+    creadoPor: currentUser.uid,
+    creadoPorNombre: currentUser.displayName || '',
+    creadoEn: serverTimestamp()
   };
 
-  // ── Acciones ──────────────────────────────────────────────────
-  window.filter = function(f) { current = f; render(); };
+  try {
+    setSyncStatus('load', '⏳ Guardando…');
+    await push(ref(db, 'calendario/eventos'), evento);
+    await push(ref(db, 'registros/historial'), {
+      uid: currentUser.uid,
+      nombre: currentUser.displayName || '',
+      accion: 'crear_evento',
+      detalle: `Creó "${title}" para ${names[evento.member]}`,
+      fecha: serverTimestamp()
+    });
+    closeModal();
+    showToast('✅ Actividad guardada');
+  } catch(e) {
+    setSyncStatus('error', '❌ Error al guardar');
+    showToast('❌ Error: ' + e.message);
+  }
+};
 
-  window.add = function() {
-    document.getElementById('d').value = new Date().getDay();
-    document.getElementById('modal').classList.add('open');
-  };
-
-  window.closeModal = function() {
-    document.getElementById('modal').classList.remove('open');
-    document.getElementById('t').value  = '';
-    document.getElementById('ti').value = '';
-    document.getElementById('l').value  = '';
-  };
-
-  window.save = async function() {
-    const title = document.getElementById('t').value.trim();
-    const time  = document.getElementById('ti').value;
-    if (!title || !time) { alert('Ingresa título y hora'); return; }
-
-    const evento = {
-      member:    document.getElementById('m').value,
-      title,
-      day:       parseInt(document.getElementById('d').value),
-      time,
-      location:  document.getElementById('l').value.trim(),
-      creadoPor: currentUid,
-      creadoEn:  serverTimestamp()
-    };
-
-    try {
-      setSyncStatus('load', '⏳ Guardando…');
-      const evRef = ref(db, 'calendario/eventos');
-      await push(evRef, evento);
-
-      // Registrar en historial
-      const histRef = ref(db, 'registros/historial');
-      await push(histRef, {
-        uid: currentUid,
-        accion: 'crear_evento',
-        detalle: `Creó "${title}" para ${names[evento.member]}`,
-        fecha: serverTimestamp()
-      });
-
-      closeModal();
-    } catch(e) {
-      setSyncStatus('error', '❌ Error al guardar');
-      alert('Error al guardar: ' + e.message);
-    }
-  };
-
-  window.del = async function(key) {
-    if (!confirm('¿Eliminar esta actividad?')) return;
-    try {
-      setSyncStatus('load', '⏳ Eliminando…');
-      await remove(ref(db, 'calendario/eventos/' + key));
-
-      // Registrar en historial
-      const histRef = ref(db, 'registros/historial');
-      await push(histRef, {
-        uid: currentUid,
-        accion: 'eliminar_evento',
-        detalle: `Eliminó evento con key: ${key}`,
-        fecha: serverTimestamp()
-      });
-    } catch(e) {
-      setSyncStatus('error', '❌ Error al eliminar');
-      alert('Error: ' + e.message);
-    }
-  };
+window.del = async function(key) {
+  if (!confirm('¿Eliminar esta actividad?')) return;
+  try {
+    setSyncStatus('load', '⏳ Eliminando…');
+    await remove(ref(db, 'calendario/eventos/' + key));
+    await push(ref(db, 'registros/historial'), {
+      uid: currentUser.uid,
+      nombre: currentUser.displayName || '',
+      accion: 'eliminar_evento',
+      detalle: `Eliminó evento key: ${key}`,
+      fecha: serverTimestamp()
+    });
+    showToast('🗑️ Actividad eliminada');
+  } catch(e) {
+    setSyncStatus('error', '❌ Error al eliminar');
+    showToast('❌ Error: ' + e.message);
+  }
+};
 </script>
 </body>
 </html>
