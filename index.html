@@ -287,10 +287,13 @@
       <label>Repetir</label>
       <select id="rep">
         <option value="none">No repetir</option>
-        <option value="weekly">Cada semana · 4 semanas</option>
-        <option value="weekly8">Cada semana · 8 semanas</option>
-        <option value="weekly12">Cada semana · 12 semanas</option>
-        <option value="weekly52">Cada semana · todo el año</option>
+        <option value="1">Todos los lunes del año</option>
+        <option value="2">Todos los martes del año</option>
+        <option value="3">Todos los miércoles del año</option>
+        <option value="4">Todos los jueves del año</option>
+        <option value="5">Todos los viernes del año</option>
+        <option value="6">Todos los sábados del año</option>
+        <option value="0">Todos los domingos del año</option>
       </select>
     </div>
     <div class="field" id="traslado-field" style="display:none;">
@@ -613,38 +616,60 @@ window.save=async()=>{
   const loc=document.getElementById('l').value.trim();
   const rep=document.getElementById('rep').value;
   const tras=document.getElementById('traslado').value;
-  const wmap={none:1,weekly:4,weekly8:8,weekly12:12,weekly52:52};
-  const weeks=wmap[rep]||1;
 
-  function nextDate(dow){
-    const t=new Date(); const diff=(dow-t.getDay()+7)%7;
-    const d=new Date(t); d.setDate(t.getDate()+(diff===0?0:diff)); d.setHours(0,0,0,0); return d;
+  // Calcular fechas a generar
+  // rep='none' => solo la fecha del próximo día seleccionado
+  // rep='0'..'6' => todos los días de ese día de semana en el año calendario actual
+  function getDatesForDay(targetDow, yearOnly){
+    const dates=[];
+    const yearStart=new Date(new Date().getFullYear(),0,1);
+    const yearEnd  =new Date(new Date().getFullYear(),11,31);
+    const d=new Date(yearStart);
+    // Avanzar hasta el primer día de la semana buscado
+    while(d.getDay()!==targetDow) d.setDate(d.getDate()+1);
+    while(d<=yearEnd){
+      dates.push(d.toISOString().split('T')[0]);
+      d.setDate(d.getDate()+7);
+    }
+    return dates;
   }
+
+  function getNextDate(targetDow){
+    const t=new Date(); const diff=(targetDow-t.getDay()+7)%7;
+    const d=new Date(t); d.setDate(t.getDate()+(diff===0?0:diff)); d.setHours(0,0,0,0);
+    return d.toISOString().split('T')[0];
+  }
+
+  const isRepeat = rep !== 'none';
+  const repDow   = isRepeat ? parseInt(rep) : day;
+  const dates    = isRepeat ? getDatesForDay(repDow) : [getNextDate(day)];
+  const eventDay = isRepeat ? repDow : day;
 
   try{
     setSS('load','⏳ Guardando…');
-    const base=nextDate(day);
-    const gid=rep!=='none'?`g_${Date.now()}`:null;
-    for(let i=0;i<weeks;i++){
-      const fd=new Date(base); fd.setDate(base.getDate()+i*7);
+    const gid = isRepeat ? `g_${Date.now()}` : null;
+    for(let i=0;i<dates.length;i++){
       const ev={
-        member,title,day,time:ti,timeFin:tf||null,location:loc,
+        member, title, day: eventDay,
+        time:ti, timeFin:tf||null, location:loc,
         traslado:['hijo1','hijo2'].includes(member)?tras:'none',
-        fecha:fd.toISOString().split('T')[0],
+        fecha:dates[i],
         creadoPor:currentUser.uid, creadoPorNombre:currentUser.displayName||'',
         creadoEn:serverTimestamp(),
-        ...(gid&&{groupId:gid,esRepetido:true,semana:i+1,totalSemanas:weeks})
+        ...(gid&&{groupId:gid, esRepetido:true, semana:i+1, totalSemanas:dates.length})
       };
       await push(ref(db,'calendario/eventos'),ev);
     }
     await push(ref(db,'registros/historial'),{
       uid:currentUser.uid, nombre:currentUser.displayName||'',
       accion:'crear_evento',
-      detalle:rep==='none'?`Creó "${title}" para ${names[member]}`:`Creó "${title}" para ${names[member]} (${weeks} sem)`,
+      detalle: isRepeat
+        ? `Creó "${title}" para ${names[member]} todos los ${DAYS[repDow]} del año (${dates.length} eventos)`
+        : `Creó "${title}" para ${names[member]}`,
       fecha:serverTimestamp()
     });
     closeModal();
-    toast(rep==='none'?'✅ Guardado':`✅ ${weeks} eventos creados`);
+    toast(isRepeat ? `✅ ${dates.length} eventos creados` : '✅ Guardado');
   }catch(e){ setSS('error','❌ Error'); toast('❌ '+e.message); }
 };
 
@@ -662,13 +687,34 @@ window.del=async key=>{
 // ── Horarios libres ───────────────────────────────────────────
 window.showFreeTime=function(member){
   const ic=member==='mama'?'👩':member==='papa'?'👨':member==='hijo1'?'🧒':'👶';
-  document.getElementById('free-title').innerHTML=`<span style="color:${colors[member]}">${ic} ${names[member]}</span> — Horarios libres`;
+  // Calcular lunes y viernes de la semana actual para el subtítulo
+  const tn=new Date();
+  const mo=(tn.getDay()===0?-6:1-tn.getDay());
+  const lun=new Date(tn); lun.setDate(tn.getDate()+mo);
+  const vie=new Date(lun); vie.setDate(lun.getDate()+4);
+  const fmt=d=>d.toLocaleDateString('es-ES',{day:'numeric',month:'short'});
+  document.getElementById('free-title').innerHTML=
+    `<span style="color:${colors[member]}">${ic} ${names[member]}</span> — Horarios libres<div style="font-size:12px;color:var(--muted);font-weight:600;margin-top:2px;">Semana del ${fmt(lun)} al ${fmt(vie)}</div>`;
   let totalMin=0, html='';
 
+  // Calcular las fechas de lunes a viernes de la semana actual
+  const todayRef = new Date();
+  const todayDow = todayRef.getDay(); // 0=dom
+  const mondayOffset = (todayDow === 0 ? -6 : 1 - todayDow);
+  const weekDates = {};
+  WORK_DAYS.forEach(d=>{
+    const fd = new Date(todayRef);
+    fd.setDate(todayRef.getDate() + mondayOffset + (d - 1));
+    weekDates[d] = fd.toISOString().split('T')[0]; // YYYY-MM-DD
+  });
+
   WORK_DAYS.forEach(dow=>{
+    const thisDateStr = weekDates[dow];
     const busy=[];
     activities.forEach(a=>{
       if(parseInt(a.day)!==dow||!a.time) return;
+      // Solo considerar eventos de esta semana específica
+      if(a.fecha && a.fecha !== thisDateStr) return;
       const s=t2m(a.time);
       const e=a.timeFin?t2m(a.timeFin):s+60; // si hay fin lo usa, sino +60min
       const own=a.member===member;
