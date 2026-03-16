@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#6366f1">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Calendario Familiar</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #f8fafc; }
+
+  #sync-status {
+    position: fixed;
+    top: 10px;
+    right: 10px;
+    z-index: 9999;
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    transition: all 0.3s;
+  }
+  .sync-ok    { background: #d1fae5; color: #065f46; }
+  .sync-load  { background: #fef3c7; color: #92400e; }
+  .sync-error { background: #fee2e2; color: #991b1b; }
+
+  #loading {
+    position: fixed; inset: 0; background: #f8fafc;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    z-index: 9000; gap: 15px;
+  }
+  .spinner {
+    width: 40px; height: 40px;
+    border: 4px solid #e5e7eb;
+    border-top-color: #6366f1;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Modal backdrop */
+  #modal {
+    display: none;
+    position: fixed; top:0; left:0; width:100%; height:100%;
+    background: rgba(0,0,0,0.5);
+    z-index: 200;
+    align-items: flex-end;
+  }
+  #modal.open { display: flex; }
+
+  input, select {
+    width: 100%;
+    padding: 14px;
+    border: 2px solid #e5e7eb;
+    border-radius: 10px;
+    font-size: 16px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  input:focus, select:focus { border-color: #6366f1; }
+</style>
+</head>
+<body>
+
+<!-- Loading overlay -->
+<div id="loading">
+  <div class="spinner"></div>
+  <div style="color:#6b7280;font-size:14px;">Conectando con Firebase…</div>
+</div>
+
+<!-- Sync indicator -->
+<div id="sync-status" class="sync-load">⏳ Conectando…</div>
+
+<div id="app"></div>
+
+<!-- Modal -->
+<div id="modal" onclick="if(event.target==this)closeModal()">
+  <div style="background:white;width:100%;border-radius:20px 20px 0 0;padding:25px;max-height:90vh;overflow-y:auto;">
+    <div style="font-size:20px;font-weight:700;margin-bottom:20px;display:flex;justify-content:space-between;">
+      <span id="modal-title">Nueva Actividad</span>
+      <button onclick="closeModal()" style="background:#f3f4f6;border:none;width:36px;height:36px;border-radius:50%;font-size:20px;cursor:pointer;">×</button>
+    </div>
+
+    <div style="margin-bottom:15px;">
+      <label style="display:block;font-size:13px;font-weight:600;color:#6b7280;margin-bottom:5px;text-transform:uppercase;">Para</label>
+      <select id="m">
+        <option value="mama">👩 Mamá</option>
+        <option value="papa">👨 Papá</option>
+        <option value="hijo1">🧒 Catalina</option>
+        <option value="hijo2">👶 Juan Martin</option>
+      </select>
+    </div>
+
+    <div style="margin-bottom:15px;">
+      <label style="display:block;font-size:13px;font-weight:600;color:#6b7280;margin-bottom:5px;text-transform:uppercase;">Actividad</label>
+      <input type="text" id="t" placeholder="Ej: Clase de fútbol">
+    </div>
+
+    <div style="margin-bottom:15px;">
+      <label style="display:block;font-size:13px;font-weight:600;color:#6b7280;margin-bottom:5px;text-transform:uppercase;">Día</label>
+      <select id="d">
+        <option value="1">Lunes</option>
+        <option value="2">Martes</option>
+        <option value="3">Miércoles</option>
+        <option value="4">Jueves</option>
+        <option value="5">Viernes</option>
+        <option value="6">Sábado</option>
+        <option value="0">Domingo</option>
+      </select>
+    </div>
+
+    <div style="margin-bottom:15px;">
+      <label style="display:block;font-size:13px;font-weight:600;color:#6b7280;margin-bottom:5px;text-transform:uppercase;">Hora</label>
+      <input type="time" id="ti">
+    </div>
+
+    <div style="margin-bottom:15px;">
+      <label style="display:block;font-size:13px;font-weight:600;color:#6b7280;margin-bottom:5px;text-transform:uppercase;">Lugar (opcional)</label>
+      <input type="text" id="l" placeholder="Ej: Club Deportivo">
+    </div>
+
+    <div style="display:flex;gap:10px;margin-top:20px;">
+      <button onclick="closeModal()" style="flex:1;padding:15px;border-radius:10px;border:none;font-size:16px;font-weight:600;background:#f3f4f6;color:#6b7280;cursor:pointer;">Cancelar</button>
+      <button onclick="save()" style="flex:1;padding:15px;border-radius:10px;border:none;font-size:16px;font-weight:600;background:#6366f1;color:white;cursor:pointer;">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Firebase SDK -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import { getDatabase, ref, onValue, push, remove, serverTimestamp, set }
+    from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+  import { getAuth, signInAnonymously, onAuthStateChanged }
+    from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+
+  // ── Firebase config ──────────────────────────────────────────
+  const firebaseConfig = {
+    apiKey: "AIzaSyDQH7D54SyerTRa8Y8BXFDFB5cAJkA8p2Q",
+    authDomain: "calendariofamiliar-edeb3.firebaseapp.com",
+    projectId: "calendariofamiliar-edeb3",
+    storageBucket: "calendariofamiliar-edeb3.firebasestorage.app",
+    messagingSenderId: "251743449792",
+    appId: "1:251743449792:web:7dfa1ac95b35648edff325",
+    databaseURL: "https://calendariofamiliar-edeb3-default-rtdb.firebaseio.com"
+  };
+
+  const fbApp  = initializeApp(firebaseConfig);
+  const db     = getDatabase(fbApp);
+  const auth   = getAuth(fbApp);
+
+  // ── State ─────────────────────────────────────────────────────
+  const names  = { mama:'Mamá', papa:'Papá', hijo1:'Catalina', hijo2:'Juan Martin' };
+  const days   = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+  let activities = [];
+  let current    = 'all';
+  let currentUid = null;
+
+  // ── Sync indicator ────────────────────────────────────────────
+  function setSyncStatus(state, msg) {
+    const el = document.getElementById('sync-status');
+    el.className = 'sync-' + state;
+    el.textContent = msg;
+  }
+
+  // ── Auth anónima ──────────────────────────────────────────────
+  signInAnonymously(auth).catch(e => {
+    setSyncStatus('error', '❌ Error de auth');
+    console.error(e);
+  });
+
+  onAuthStateChanged(auth, user => {
+    if (!user) return;
+    currentUid = user.uid;
+
+    // Registrar sesión en /usuarios/{uid}
+    const userRef = ref(db, 'usuarios/' + user.uid);
+    set(userRef, {
+      uid: user.uid,
+      tipo: 'anonimo',
+      ultimaConexion: serverTimestamp()
+    });
+
+    // Escuchar eventos del calendario (tiempo real)
+    const evRef = ref(db, 'calendario/eventos');
+    onValue(evRef, snapshot => {
+      activities = [];
+      const data = snapshot.val();
+      if (data) {
+        Object.entries(data).forEach(([key, val]) => {
+          activities.push({ ...val, _key: key });
+        });
+      }
+      document.getElementById('loading').style.display = 'none';
+      setSyncStatus('ok', '✅ Sincronizado');
+      render();
+    }, err => {
+      setSyncStatus('error', '❌ Sin conexión');
+      console.error(err);
+    });
+  });
+
+  // ── Render ────────────────────────────────────────────────────
+  window.render = function() {
+    const app = document.getElementById('app');
+    let html = '<div style="max-width:500px;margin:0 auto;background:#f8fafc;min-height:100vh;">';
+
+    // Header
+    html += '<div style="background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white;padding:20px;">';
+    html += '<h1 style="font-size:24px;margin:0;">📅 Calendario Familiar</h1>';
+    html += '<div style="font-size:14px;opacity:0.9;margin-top:5px;">'
+          + new Date().toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long'})
+          + '</div></div>';
+
+    // Filtros
+    const colors = { all:'#6366f1', mama:'#ec4899', papa:'#3b82f6', hijo1:'#f59e0b', hijo2:'#10b981' };
+    html += '<div style="display:flex;gap:8px;padding:15px;background:white;overflow-x:auto;">';
+    const btns = [
+      ['all','Todos',''],
+      ['mama',names.mama,'👩 '],
+      ['papa',names.papa,'👨 '],
+      ['hijo1',names.hijo1,'🧒 '],
+      ['hijo2',names.hijo2,'👶 '],
+    ];
+    btns.forEach(([key, label, icon]) => {
+      const active = current === key;
+      const bg = active ? colors[key]+';color:white' : '#f3f4f6;color:#374151';
+      html += `<button onclick="filter('${key}')" style="padding:10px 15px;border-radius:20px;border:none;background:${bg};font-weight:600;flex-shrink:0;cursor:pointer;">${icon}${label}</button>`;
+    });
+    html += '</div>';
+
+    // Lista
+    html += '<div style="padding:20px;">';
+    const filtered = current === 'all' ? activities : activities.filter(a => a.member === current);
+    filtered.sort((a,b) => a.day !== b.day ? a.day - b.day : (a.time||'').localeCompare(b.time||''));
+
+    if (filtered.length === 0) {
+      html += '<div style="text-align:center;padding:50px;color:#9ca3af;"><div style="font-size:60px;margin-bottom:15px;">📅</div>No hay actividades<br><span style="font-size:14px;">Toca + para agregar</span></div>';
+    } else {
+      const byDay = {};
+      filtered.forEach(a => { if (!byDay[a.day]) byDay[a.day]=[]; byDay[a.day].push(a); });
+      Object.keys(byDay).sort().forEach(d => {
+        const isToday = parseInt(d) === new Date().getDay();
+        html += `<div style="font-size:12px;font-weight:700;color:#6b7280;text-transform:uppercase;margin:15px 0 10px;">${days[d]}${isToday?' (Hoy)':''}</div>`;
+        byDay[d].forEach(a => {
+          const color = colors[a.member] || '#6366f1';
+          const icon  = a.member==='mama'?'👩':a.member==='papa'?'👨':a.member==='hijo1'?'🧒':'👶';
+          html += `<div style="background:white;padding:15px;margin-bottom:10px;border-radius:12px;border-left:4px solid ${color};position:relative;box-shadow:0 2px 8px rgba(0,0,0,0.05);">`;
+          html += `<div style="font-weight:700;color:#6366f1;font-size:14px;">${a.time||''}</div>`;
+          html += `<div style="font-size:16px;font-weight:600;margin:5px 0;">${a.title}</div>`;
+          html += `<div style="font-size:12px;color:#6b7280;">${icon} ${names[a.member]||a.member}</div>`;
+          if (a.location) html += `<div style="font-size:12px;color:#666;margin-top:5px;">📍 ${a.location}</div>`;
+          html += `<button onclick="del('${a._key}')" style="position:absolute;top:10px;right:10px;background:#fee2e2;color:#ef4444;border:none;width:30px;height:30px;border-radius:50%;font-size:16px;cursor:pointer;">×</button>`;
+          html += `</div>`;
+        });
+      });
+    }
+    html += '</div>';
+
+    // FAB
+    html += '<button onclick="add()" style="position:fixed;bottom:20px;right:20px;width:60px;height:60px;border-radius:50%;background:#6366f1;color:white;border:none;font-size:24px;box-shadow:0 4px 15px rgba(0,0,0,0.3);z-index:100;cursor:pointer;">+</button>';
+    html += '</div>';
+    app.innerHTML = html;
+  };
+
+  // ── Acciones ──────────────────────────────────────────────────
+  window.filter = function(f) { current = f; render(); };
+
+  window.add = function() {
+    document.getElementById('d').value = new Date().getDay();
+    document.getElementById('modal').classList.add('open');
+  };
+
+  window.closeModal = function() {
+    document.getElementById('modal').classList.remove('open');
+    document.getElementById('t').value  = '';
+    document.getElementById('ti').value = '';
+    document.getElementById('l').value  = '';
+  };
+
+  window.save = async function() {
+    const title = document.getElementById('t').value.trim();
+    const time  = document.getElementById('ti').value;
+    if (!title || !time) { alert('Ingresa título y hora'); return; }
+
+    const evento = {
+      member:    document.getElementById('m').value,
+      title,
+      day:       parseInt(document.getElementById('d').value),
+      time,
+      location:  document.getElementById('l').value.trim(),
+      creadoPor: currentUid,
+      creadoEn:  serverTimestamp()
+    };
+
+    try {
+      setSyncStatus('load', '⏳ Guardando…');
+      const evRef = ref(db, 'calendario/eventos');
+      await push(evRef, evento);
+
+      // Registrar en historial
+      const histRef = ref(db, 'registros/historial');
+      await push(histRef, {
+        uid: currentUid,
+        accion: 'crear_evento',
+        detalle: `Creó "${title}" para ${names[evento.member]}`,
+        fecha: serverTimestamp()
+      });
+
+      closeModal();
+    } catch(e) {
+      setSyncStatus('error', '❌ Error al guardar');
+      alert('Error al guardar: ' + e.message);
+    }
+  };
+
+  window.del = async function(key) {
+    if (!confirm('¿Eliminar esta actividad?')) return;
+    try {
+      setSyncStatus('load', '⏳ Eliminando…');
+      await remove(ref(db, 'calendario/eventos/' + key));
+
+      // Registrar en historial
+      const histRef = ref(db, 'registros/historial');
+      await push(histRef, {
+        uid: currentUid,
+        accion: 'eliminar_evento',
+        detalle: `Eliminó evento con key: ${key}`,
+        fecha: serverTimestamp()
+      });
+    } catch(e) {
+      setSyncStatus('error', '❌ Error al eliminar');
+      alert('Error: ' + e.message);
+    }
+  };
+</script>
+</body>
+</html>
