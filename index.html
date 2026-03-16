@@ -154,6 +154,32 @@
   /* Del btn */
   .del-btn { position:absolute; top:10px; right:10px; background:#fee2e2; color:#ef4444; border:none; width:28px; height:28px; border-radius:50%; font-size:14px; cursor:pointer; display:flex; align-items:center; justify-content:center; font-weight:700; }
 
+  /* Panel gestión */
+  #manage-panel { display:none; position:fixed; inset:0; background:rgba(15,23,42,0.6); z-index:900; align-items:flex-end; backdrop-filter:blur(4px); }
+  #manage-panel.open { display:flex; }
+  .manage-sheet { background:white; width:100%; border-radius:24px 24px 0 0; padding:24px 20px 40px; max-height:80vh; overflow-y:auto; animation:slideUp 0.25s ease; }
+  .manage-row {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:14px 16px; border-radius:14px; background:var(--bg);
+    margin-bottom:10px;
+  }
+  .manage-row-left { display:flex; align-items:center; gap:12px; }
+  .manage-row-icon { font-size:22px; }
+  .manage-row-name { font-size:15px; font-weight:800; }
+  .manage-row-count { font-size:12px; color:var(--muted); font-weight:600; margin-top:2px; }
+  .manage-del-btn {
+    padding:8px 16px; border-radius:10px; border:none;
+    background:#fee2e2; color:#ef4444; font-size:13px; font-weight:800;
+    cursor:pointer; font-family:'Nunito',sans-serif; transition:background 0.15s;
+  }
+  .manage-del-btn:hover { background:#fecaca; }
+  .manage-del-all {
+    width:100%; padding:14px; border-radius:12px; border:none;
+    font-size:14px; font-weight:800; font-family:'Nunito',sans-serif;
+    background:#fee2e2; color:#ef4444; cursor:pointer; margin-top:6px;
+  }
+  .manage-separator { border:none; border-top:1px solid var(--border); margin:16px 0; }
+
   /* Toast */
   #toast { position:fixed; bottom:100px; left:50%; transform:translateX(-50%); background:#1e293b; color:white; padding:10px 20px; border-radius:20px; font-size:13px; font-weight:700; z-index:9000; opacity:0; transition:opacity 0.3s; pointer-events:none; white-space:nowrap; }
   #toast.show { opacity:1; }
@@ -181,6 +207,7 @@
 <div id="user-menu">
   <div class="um-name"  id="um-name"></div>
   <div class="um-email" id="um-email"></div>
+  <button class="um-btn" style="color:#6366f1;" onclick="closeUserMenu();openManage()">🗂️ Gestionar eventos</button>
   <button class="um-btn" onclick="logout()">🚪 Cerrar sesión</button>
 </div>
 
@@ -279,6 +306,17 @@
       <button class="btn-cancel" onclick="closeModal()">Cancelar</button>
       <button class="btn-save"   onclick="save()">✓ Guardar</button>
     </div>
+  </div>
+</div>
+
+<!-- Panel gestión de eventos -->
+<div id="manage-panel" onclick="if(event.target==this)closeManage()">
+  <div class="manage-sheet">
+    <div class="modal-header">
+      <span class="modal-title">🗂️ Gestionar eventos</span>
+      <button class="modal-close" onclick="closeManage()">×</button>
+    </div>
+    <div id="manage-content"></div>
   </div>
 </div>
 
@@ -670,6 +708,78 @@ window.showFreeTime=function(member){
   document.getElementById('free-panel').classList.add('open');
 };
 window.closeFreePanel=()=>document.getElementById('free-panel').classList.remove('open');
+
+// ── Gestión de eventos ────────────────────────────────────────
+window.openManage = function(){
+  const memberList = [
+    ['mama','👩','Mamá'],['papa','👨','Papá'],
+    ['hijo1','🧒','Catalina'],['hijo2','👶','Juan Martin']
+  ];
+
+  let html='<p style="font-size:13px;color:var(--muted);font-weight:600;margin-bottom:16px;">Eliminá todos los eventos de un miembro o de toda la familia.</p>';
+
+  memberList.forEach(([key, icon, label])=>{
+    const count = activities.filter(a=>a.member===key).length;
+    const c = colors[key];
+    html+=`<div class="manage-row">
+      <div class="manage-row-left">
+        <div class="manage-row-icon">${icon}</div>
+        <div>
+          <div class="manage-row-name" style="color:${c}">${label}</div>
+          <div class="manage-row-count">${count} evento${count!==1?'s':''}</div>
+        </div>
+      </div>
+      ${count>0
+        ? `<button class="manage-del-btn" onclick="deleteByMember('${key}','${label}')">Eliminar todos</button>`
+        : `<span style="font-size:12px;color:var(--muted);font-weight:700;">Sin eventos</span>`
+      }
+    </div>`;
+  });
+
+  const total = activities.length;
+  if(total > 0){
+    html+=`<hr class="manage-separator">
+    <button class="manage-del-all" onclick="deleteAll()">🗑️ Eliminar TODOS los eventos (${total})</button>`;
+  }
+
+  document.getElementById('manage-content').innerHTML = html;
+  document.getElementById('manage-panel').classList.add('open');
+};
+
+window.closeManage = ()=>document.getElementById('manage-panel').classList.remove('open');
+
+window.deleteByMember = async function(member, label){
+  const evs = activities.filter(a=>a.member===member);
+  if(!confirm(`¿Eliminar los ${evs.length} eventos de ${label}? Esta acción no se puede deshacer.`)) return;
+  try{
+    setSS('load','⏳ Eliminando…');
+    for(const a of evs) await remove(ref(db,'calendario/eventos/'+a._key));
+    await push(ref(db,'registros/historial'),{
+      uid:currentUser.uid, nombre:currentUser.displayName||'',
+      accion:'eliminar_masivo', detalle:`Eliminó todos los eventos de ${label} (${evs.length})`,
+      fecha:serverTimestamp()
+    });
+    toast(`🗑️ ${evs.length} eventos de ${label} eliminados`);
+    closeManage();
+    setTimeout(openManage, 400);
+  }catch(e){ setSS('error','❌ Error'); toast('❌ '+e.message); }
+};
+
+window.deleteAll = async function(){
+  const total = activities.length;
+  if(!confirm(`¿Eliminar los ${total} eventos de toda la familia? Esta acción NO se puede deshacer.`)) return;
+  try{
+    setSS('load','⏳ Eliminando todo…');
+    for(const a of activities) await remove(ref(db,'calendario/eventos/'+a._key));
+    await push(ref(db,'registros/historial'),{
+      uid:currentUser.uid, nombre:currentUser.displayName||'',
+      accion:'eliminar_todo', detalle:`Eliminó todos los eventos (${total})`,
+      fecha:serverTimestamp()
+    });
+    toast(`🗑️ ${total} eventos eliminados`);
+    closeManage();
+  }catch(e){ setSS('error','❌ Error'); toast('❌ '+e.message); }
+};
 </script>
 </body>
 </html>
