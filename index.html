@@ -418,9 +418,13 @@ function showLoginError(msg) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Auth: intenta popup primero; si falla usa redirect como fallback.
-// Esto funciona mejor en navegadores web (escritorio y móvil).
+// Auth: en móvil/iOS usa SIEMPRE redirect (Safari bloquea popups).
+// En escritorio usa popup para mejor experiencia.
 // ─────────────────────────────────────────────────────────────
+function isMobile() {
+  return /iPhone|iPad|iPod|Android|Mobile/i.test(navigator.userAgent);
+}
+
 function loginGoogle() {
   if (!auth) { showLoginError('❌ Firebase no está listo'); return; }
 
@@ -431,11 +435,21 @@ function loginGoogle() {
 
   setSS('load', '⏳ Conectando...');
 
-  // Intentar popup primero (más fluido en navegadores)
+  // En iPhone/iPad/Android siempre usar redirect
+  if (isMobile()) {
+    console.log('Dispositivo móvil detectado, usando redirect...');
+    auth.signInWithRedirect(provider).catch(e => {
+      console.error('Error redirect:', e);
+      showLoginError('❌ ' + (e.message || 'Error al iniciar sesión'));
+      setSS('error', '❌ Error');
+    });
+    return;
+  }
+
+  // En escritorio usar popup (más fluido)
   auth.signInWithPopup(provider).catch(e => {
     console.warn('Popup falló, intentando redirect:', e.code);
 
-    // Si el popup fue bloqueado o cerrado, usar redirect
     if (
       e.code === 'auth/popup-blocked' ||
       e.code === 'auth/popup-closed-by-user' ||
@@ -449,7 +463,6 @@ function loginGoogle() {
       return;
     }
 
-    // Otros errores: mostrar mensaje descriptivo
     let msg = '❌ Error al iniciar sesión';
     if (e.code === 'auth/unauthorized-domain') {
       msg = '❌ Dominio no autorizado. Agregá ' + window.location.hostname + ' en Firebase Console → Authentication → Authorized domains';
