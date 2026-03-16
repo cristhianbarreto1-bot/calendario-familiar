@@ -337,19 +337,25 @@
 
 <script>
 // ─────────────────────────────────────────────────────────────
-// CORRECCIÓN APLICADA:
-//   authDomain cambiado de "calendariofamiliar-edeb3.firebaseapp.com"
-//   a "cristhianbarreto1-bot.github.io" para que el redirect de
-//   Google vuelva correctamente al dominio de GitHub Pages.
+// CONFIGURACIÓN CORRECTA PARA GITHUB PAGES:
 //
-// TAMBIÉN NECESITÁS hacer esto en Google Cloud Console:
-//   APIs & Services → Credentials → tu OAuth 2.0 Client ID →
-//   Authorized redirect URIs → agregar:
-//   https://cristhianbarreto1-bot.github.io/__/auth/handler
+// authDomain debe ser siempre firebaseapp.com (Firebase actúa
+// de intermediario entre GitHub Pages y Google OAuth).
+//
+// Lo que tenés que hacer en las consolas:
+//
+// [Firebase Console] Authentication → Settings → Authorized domains:
+//   → agregar: cristhianbarreto1-bot.github.io
+//
+// [Google Cloud Console] APIs & Services → Credentials → OAuth Client:
+//   Authorized JavaScript origins:
+//     → https://cristhianbarreto1-bot.github.io
+//   Authorized redirect URIs:
+//     → https://calendariofamiliar-edeb3.firebaseapp.com/__/auth/handler
 // ─────────────────────────────────────────────────────────────
 const firebaseConfig = {
   apiKey: "AIzaSyDQH7D54SyerTRa8Y8BXFDFB5cAJkA8p2Q",
-  authDomain: "cristhianbarreto1-bot.github.io",   // ← CORREGIDO
+  authDomain: "calendariofamiliar-edeb3.firebaseapp.com",
   projectId: "calendariofamiliar-edeb3",
   storageBucket: "calendariofamiliar-edeb3.firebasestorage.app",
   messagingSenderId: "251743449792",
