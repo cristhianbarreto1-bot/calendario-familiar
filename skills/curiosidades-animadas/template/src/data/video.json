@@ -1,0 +1,151 @@
+{
+  "titulo": "Los pulpos tienen tres corazones",
+  "voz": "voz.mp3",
+  "musica": "musica/fondo.wav",
+  "volumenMusica": 0.1,
+  "duracion": 16,
+  "colorPersonaje": "#ffcf3f",
+  "escenas": [
+    {
+      "inicio": 0,
+      "fin": 2.6,
+      "fondo": "oceano",
+      "titular": "¿Sabías que...?",
+      "sfx": "whoosh",
+      "personaje": {
+        "expresion": "sorprendido",
+        "posicion": "izquierda",
+        "senala": true
+      },
+      "elementos": [
+        {
+          "tipo": "numero",
+          "valor": "3",
+          "x": 0.72,
+          "y": 0.27,
+          "tamano": 380,
+          "animacion": "rebote"
+        },
+        {
+          "tipo": "corazon",
+          "x": 0.72,
+          "y": 0.36,
+          "tamano": 200,
+          "animacion": "latido",
+          "retraso": 0.5
+        }
+      ]
+    },
+    {
+      "inicio": 2.6,
+      "fin": 6.5,
+      "fondo": "cuerpo",
+      "sfx": "pop",
+      "personaje": {
+        "expresion": "normal",
+        "posicion": "derecha"
+      },
+      "elementos": [
+        {
+          "tipo": "corazon",
+          "x": 0.2,
+          "y": 0.18,
+          "tamano": 170,
+          "animacion": "latido"
+        },
+        {
+          "tipo": "corazon",
+          "x": 0.42,
+          "y": 0.18,
+          "tamano": 170,
+          "animacion": "latido",
+          "retraso": 0.3
+        },
+        {
+          "tipo": "corazon",
+          "x": 0.31,
+          "y": 0.34,
+          "tamano": 230,
+          "color": "#ff2d55",
+          "animacion": "latido",
+          "retraso": 1.6
+        }
+      ]
+    },
+    {
+      "inicio": 6.5,
+      "fin": 9.2,
+      "fondo": "laboratorio",
+      "sfx": "ding",
+      "sacudir": true,
+      "personaje": {
+        "expresion": "asustado",
+        "posicion": "centro"
+      },
+      "elementos": [
+        {
+          "tipo": "gota",
+          "x": 0.5,
+          "y": 0.27,
+          "tamano": 280,
+          "color": "#2f6bff",
+          "animacion": "rebote"
+        }
+      ]
+    },
+    {
+      "inicio": 9.2,
+      "fin": 13.2,
+      "fondo": "oceano",
+      "sfx": "boing",
+      "personaje": {
+        "expresion": "pensativo",
+        "posicion": "derecha"
+      },
+      "elementos": [
+        {
+          "tipo": "texto",
+          "valor": "NADAR = 💔",
+          "x": 0.5,
+          "y": 0.2,
+          "tamano": 420
+        },
+        {
+          "tipo": "flecha",
+          "x": 0.32,
+          "y": 0.33,
+          "tamano": 260,
+          "animacion": "flotar"
+        }
+      ]
+    },
+    {
+      "inicio": 13.2,
+      "fin": 16,
+      "fondo": "espacio",
+      "sfx": "pop",
+      "titular": "Seguime 👉",
+      "personaje": {
+        "expresion": "riendo",
+        "posicion": "centro"
+      },
+      "elementos": [
+        {
+          "tipo": "estrella",
+          "x": 0.2,
+          "y": 0.35,
+          "tamano": 160,
+          "animacion": "girar"
+        },
+        {
+          "tipo": "estrella",
+          "x": 0.82,
+          "y": 0.4,
+          "tamano": 120,
+          "animacion": "girar"
+        }
+      ]
+    }
+  ],
+  "subtitulos": []
+}
